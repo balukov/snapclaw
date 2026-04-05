@@ -81,6 +81,14 @@ All your data lives on a Railway Volume at `/data` and survives redeploys and Op
 
 To update OpenClaw, just redeploy — your data stays.
 
+## Batteries included
+
+SnapClaw ships with a curated pack of lightweight skills that don't break the default OpenClaw workflow — they just make it work better. No frameworks, no opinions, no bloat. I use all of these daily.
+
+| Skill | What it does | Trigger |
+|---|---|---|
+| **Memory Sleep** | Scans daily logs, merges into `MEMORY.md` — like REM sleep for your AI | Nightly cron (3 AM) or say "dream" |
+
 ## AI providers
 
 | Provider | Cost | Notes |

@@ -575,12 +575,44 @@ server.listen(PORT, "0.0.0.0", async () => {
     fs.chmodSync(STATE_DIR, 0o700);
   } catch {}
 
+  // Copy bundled skills to workspace if not already there
+  const bundledSkillsDir = path.join(process.cwd(), "skills");
+  try {
+    if (fs.existsSync(bundledSkillsDir)) {
+      const skillsTarget = path.join(WORKSPACE_DIR, "skills");
+      fs.mkdirSync(skillsTarget, { recursive: true });
+      for (const skill of fs.readdirSync(bundledSkillsDir)) {
+        const dest = path.join(skillsTarget, skill);
+        if (!fs.existsSync(dest)) {
+          fs.cpSync(path.join(bundledSkillsDir, skill), dest, { recursive: true });
+          console.log(`[snapclaw] installed skill: ${skill}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[snapclaw] failed to copy skills: ${err}`);
+  }
+
   // Auto-start gateway if configured
   if (isConfigured()) {
     console.log("[snapclaw] starting gateway...");
     try {
       await gateway.start();
       console.log("[snapclaw] gateway ready");
+
+      // Set up memory-sleep cron if not already configured
+      try {
+        const cronCheck = await runCmd("openclaw", ["cron", "list"]);
+        if (!cronCheck.output.includes("memory-sleep") && !cronCheck.output.includes("dream")) {
+          await runCmd("openclaw", [
+            "cron", "add",
+            "--schedule", "0 3 * * *",
+            "--task", "Execute memory-sleep skill: consolidate memory",
+            "--label", "memory-sleep",
+          ]);
+          console.log("[snapclaw] cron: memory-sleep nightly at 3 AM");
+        }
+      } catch {}
     } catch (err) {
       console.error("[snapclaw] gateway failed:", err);
     }

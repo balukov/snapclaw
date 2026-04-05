@@ -24,6 +24,7 @@ RUN npm install && npm cache clean --force
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
+COPY skills ./skills
 RUN npm run build
 
 # Railway injects PORT at runtime
