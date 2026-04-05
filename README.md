@@ -68,43 +68,26 @@ Deploy your own AI agent in minutes. Click the button, follow the steps, talk to
 
 ---
 
-## What's included
+## Your data is safe
 
-- **OpenClaw Gateway + Control UI** — full AI agent platform
-- **Interactive setup wizard** at `/setup` with embedded terminal
-- **Built-in browser automation** — Playwright + Chromium
-- **Persistent storage** — config, credentials, memory survive redeploys
+All your data lives on a Railway Volume at `/data` and survives redeploys and OpenClaw updates:
 
-## Tech stack
+- **Conversations** — full chat history with your bot
+- **Memory** — what your bot learned about you
+- **Config** — AI provider, channels, settings
+- **Credentials** — API keys, OAuth tokens
+- **Skills** — installed plugins and custom skills
+- **Workspace** — bot personality files, scripts
 
-- **TypeScript** — server and client
-- **Node.js 22** — runtime
-- **OpenClaw** — AI agent framework (installed via npm)
-- **Playwright** — browser automation
-- **xterm.js** — embedded terminal
-- **node-pty** — PTY backend for terminal
+To update OpenClaw, just redeploy — your data stays.
 
-## Best practices
+## AI providers
 
-| AI Provider | Cost | Notes |
+| Provider | Cost | Notes |
 |---|---|---|
 | **OpenAI Codex OAuth** | Free (ChatGPT sub) | Recommended — auto-refreshes tokens |
 | **Anthropic API key** | Pay per token | Simple, reliable, no expiry |
 | **OpenAI API key** | Pay per token | Simple, reliable, no expiry |
-
-## Troubleshooting
-
-**502 Bad Gateway** — Check Settings → Networking port. Ensure Volume is mounted at `/data`.
-
-**"pairing required"** — Visit `/setup` → Step 2 → approve your devices.
-
-## Persistence
-
-Only `/data` (Railway Volume) survives redeploys.
-
-**Persists:** config, credentials, sessions, memory, workspace
-
-**Does not persist:** `apt-get` packages, `~/.cache/`, `/tmp/`
 
 ## Credits
 
