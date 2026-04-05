@@ -1,0 +1,26 @@
+{
+  "name": "snapclaw",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build:client": "esbuild src/client/setup.ts --bundle --minify --outfile=public/setup.js --format=iife --target=es2020",
+    "build": "npm run build:client",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1",
+    "node-pty": "^1.0.0",
+    "tar": "^7.5.4",
+    "tsx": "^4.19.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/http-proxy": "^1.17.15",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}

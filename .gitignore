@@ -1,0 +1,4 @@
+node_modules
+dist
+.tmpdata
+.DS_Store
