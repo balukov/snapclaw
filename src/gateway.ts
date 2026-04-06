@@ -80,6 +80,15 @@ async function ensureConfig(): Promise<void> {
     }
   } catch {}
 
+  // Trust loopback proxy so Railway-forwarded requests are treated as local
+  await runCmd("openclaw", [
+    "config",
+    "set",
+    "--json",
+    "gateway.trustedProxies",
+    JSON.stringify(["127.0.0.1", "::1"]),
+  ]);
+
   // Sync gateway tokens
   await runCmd("openclaw", ["config", "set", "gateway.auth.mode", "token"]);
   await runCmd("openclaw", [
