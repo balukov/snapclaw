@@ -39,9 +39,11 @@ RUN npx playwright install-deps chromium \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Chromium browser binary via OpenClaw's bundled playwright-core.
-# Dynamically locate the CLI to survive openclaw version changes.
+# Use find to locate the CLI — resilient to dependency hoisting and version changes.
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
-RUN PW_CLI=$(node -e "try{console.log(require.resolve('playwright-core/cli',{paths:['/usr/local/lib/node_modules/openclaw']}))}catch{process.exit(1)}") \
+RUN PW_CLI=$(find /usr/local/lib/node_modules -path '*/playwright-core/cli.js' -print -quit) \
+  && test -n "$PW_CLI" \
+  && echo "playwright-core CLI: $PW_CLI" \
   && node "$PW_CLI" install chromium \
   && chown -R node:node /home/node/.cache
 
