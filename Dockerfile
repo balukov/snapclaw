@@ -9,10 +9,14 @@ RUN apt-get update \
 # Install OpenClaw globally
 RUN npm install -g openclaw@latest
 
-# Install Playwright Chromium for built-in browser plugin
+# Install Playwright Chromium system deps
 RUN npx -y playwright install-deps chromium \
-  && npx -y playwright install chromium \
   && rm -rf /var/lib/apt/lists/*
+
+# Install Chromium via bundled Playwright CLI (avoids npm override conflicts)
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+RUN node /usr/lib/node_modules/openclaw/node_modules/playwright-core/cli.js install chromium \
+  || npx -y playwright install chromium
 
 WORKDIR /app
 
