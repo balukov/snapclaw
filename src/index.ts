@@ -619,7 +619,9 @@ server.listen(PORT, "0.0.0.0", async () => {
   }
 });
 
-process.on("SIGTERM", () => {
-  gateway.stop();
+process.on("SIGTERM", async () => {
+  console.log("[snapclaw] SIGTERM received, shutting down...");
   server.close();
+  await gateway.stop();
+  process.exit(0);
 });

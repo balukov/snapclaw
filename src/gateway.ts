@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import {
   STATE_DIR,
   WORKSPACE_DIR,
@@ -195,9 +196,20 @@ export async function start(): Promise<void> {
 
 export async function stop(): Promise<void> {
   if (!proc) return;
-  proc.kill("SIGTERM");
-  await sleep(1000);
+  const p = proc;
   proc = null;
+  p.kill("SIGTERM");
+  // Wait for the gateway (and its Chrome children) to exit gracefully
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => {
+      p.kill("SIGKILL");
+      resolve();
+    }, 10_000);
+    p.on("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
 }
 
 export async function restart(): Promise<void> {
