@@ -39,17 +39,27 @@ async function ensureConfig(): Promise<void> {
     }
   } catch {}
 
-  // Always sync allowedOrigins with current Railway domain
-  const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
-  if (domain) {
-    await runCmd("openclaw", [
-      "config",
-      "set",
-      "--json",
-      "gateway.controlUi.allowedOrigins",
-      JSON.stringify([`https://${domain}`, "http://localhost:3000"]),
-    ]);
+  // Collect all known origins for the Control UI
+  const origins = new Set(["http://localhost:3000"]);
+  for (const envVar of [
+    "RAILWAY_PUBLIC_DOMAIN",
+    "RAILWAY_PRIVATE_DOMAIN",
+    "RAILWAY_STATIC_URL",
+    "PUBLIC_DOMAIN",
+  ]) {
+    const val = process.env[envVar]?.trim();
+    if (val) {
+      // Handle both "domain.com" and "https://domain.com" formats
+      origins.add(val.startsWith("http") ? val : `https://${val}`);
+    }
   }
+  await runCmd("openclaw", [
+    "config",
+    "set",
+    "--json",
+    "gateway.controlUi.allowedOrigins",
+    JSON.stringify([...origins]),
+  ]);
 
   // Enable browser plugin — OpenClaw auto-detects system chromium
   await runCmd("openclaw", [
