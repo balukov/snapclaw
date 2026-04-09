@@ -14,7 +14,7 @@ WORKDIR /app
 
 # --- Layer-cache: deps first (only re-runs when lockfile changes) ---
 COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
     npm ci
 
 # --- Copy source & build ---
