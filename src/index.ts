@@ -254,6 +254,7 @@ async function handleRequest(
       return sendJson(res, {
         ok: true,
         configured: isConfigured(),
+        channelsReady,
         openclawVersion: r.output.trim(),
         gatewayTarget: GATEWAY_TARGET,
       });

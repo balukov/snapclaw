@@ -18,6 +18,7 @@ declare const FitAddon: {
 const $ = (id: string) => document.getElementById(id)!;
 
 let isConfigured = false;
+let hasChannels = false;
 
 // --- HTTP ---
 
@@ -40,10 +41,12 @@ async function refreshStatus(): Promise<void> {
   try {
     const j = await httpJson<{
       configured: boolean;
+      channelsReady: boolean;
       openclawVersion?: string;
     }>("/snapclaw/api/status");
 
     isConfigured = !!j.configured;
+    hasChannels = !!j.channelsReady;
     const ver = j.openclawVersion ? j.openclawVersion : "";
     $("status").textContent = j.configured ? `Ready ${ver}` : "Setting up...";
     $("statusBar").classList.toggle("configured", !!j.configured);
@@ -291,7 +294,7 @@ $("dashRestart").onclick = async () => {
 // --- Init ---
 
 refreshStatus().then(() => {
-  if (isConfigured) {
+  if (hasChannels) {
     showDashboard();
   } else {
     checkTelegram();
