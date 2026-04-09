@@ -117,6 +117,9 @@ export async function start(): Promise<void> {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
+  // Auto-fix config issues (e.g. plugin schema changes across openclaw versions)
+  await runCmd("openclaw", ["doctor", "--fix"]);
+
   await ensureConfig();
 
   proc = spawn(
