@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ============================================================
-# Stage 1: Build (compile native modules + client JS + server TS)
+# Stage 1: Build snapclaw (compile native modules + client JS + server TS)
 # ============================================================
 FROM node:22-bookworm AS builder
 
@@ -12,40 +12,30 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# --- Layer-cache: deps first (only re-runs when lockfile changes) ---
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# --- Copy source & build ---
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
 RUN npm run build
 
-# Strip devDependencies
 RUN npm prune --omit=dev
 
 # ============================================================
-# Stage 2: Runtime (slim, non-root)
+# Stage 2: Runtime — based on official openclaw image
 # ============================================================
-FROM node:22-bookworm-slim
+FROM ghcr.io/openclaw/openclaw:latest
 
-ARG EXTRA_APT_PACKAGES=""
+USER root
+
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    tini gosu ${EXTRA_APT_PACKAGES} \
+    tini gosu \
   && rm -rf /var/lib/apt/lists/*
-
-RUN npm install -g openclaw@latest
-
-# Install Playwright Chromium + system deps (using openclaw's bundled playwright-core)
-ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
-RUN node /usr/local/lib/node_modules/openclaw/node_modules/playwright-core/cli.js install --with-deps chromium \
-  && chown -R node:node /home/node/.cache
 
 WORKDIR /app
 
-# --- Copy compiled output only (no src/ or tsconfig at runtime) ---
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
@@ -54,11 +44,10 @@ COPY skills ./skills
 
 RUN chown -R node:node /app
 
-# Prepare data directories
+# Prepare data directories (Railway mounts volume at /data)
 RUN mkdir -p /data/.openclaw /data/workspace \
   && chown -R node:node /data
 
-# Entrypoint (permission fixup for Railway volumes, then drop to node user)
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
