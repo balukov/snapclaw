@@ -74,42 +74,51 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
   return JSON.parse(body.toString("utf8"));
 }
 
-// --- Auth groups (for legacy form-based setup) ---
+// --- Auto-configure helpers ---
 
-const AUTH_GROUPS = [
-  {
-    value: "openai",
-    label: "OpenAI",
-    hint: "Codex OAuth + API key",
-    options: [
-      { value: "codex-cli", label: "OpenAI Codex OAuth (Codex CLI)" },
-      { value: "openai-codex", label: "OpenAI Codex (ChatGPT OAuth)" },
-      { value: "openai-api-key", label: "OpenAI API key" },
-    ],
-  },
-  {
-    value: "anthropic",
-    label: "Anthropic",
-    hint: "Claude API key",
-    options: [
-      { value: "apiKey", label: "Anthropic API key" },
-    ],
-  },
-  {
-    value: "gemini",
-    label: "Google Gemini",
-    hint: "API key",
-    options: [{ value: "gemini-api-key", label: "Gemini API key" }],
-  },
-  {
-    value: "openrouter",
-    label: "OpenRouter",
-    hint: "API key",
-    options: [
-      { value: "openrouter-api-key", label: "OpenRouter API key" },
-    ],
-  },
-];
+async function applyPostSetupConfig(): Promise<void> {
+  await runCmd("openclaw", ["config", "set", "gateway.auth.mode", "token"]);
+  await runCmd("openclaw", ["config", "set", "gateway.auth.token", GATEWAY_TOKEN]);
+  await runCmd("openclaw", ["config", "set", "gateway.remote.token", GATEWAY_TOKEN]);
+  await runCmd("openclaw", ["config", "set", "gateway.bind", "loopback"]);
+  await runCmd("openclaw", ["config", "set", "gateway.port", String(INTERNAL_PORT)]);
+  await runCmd("openclaw", [
+    "config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]',
+  ]);
+
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (domain) {
+    await runCmd("openclaw", [
+      "config", "set", "--json", "gateway.controlUi.allowedOrigins",
+      JSON.stringify([`https://${domain}`, `http://localhost:${PORT}`]),
+    ]);
+  }
+}
+
+async function autoOnboard(): Promise<boolean> {
+  console.log("[snapclaw] auto-onboarding...");
+  const r = await runCmd("openclaw", [
+    "onboard",
+    "--non-interactive",
+    "--accept-risk",
+    "--skip-health",
+    "--flow", "quickstart",
+    "--mode", "local",
+    "--gateway-port", String(INTERNAL_PORT),
+    "--gateway-bind", "loopback",
+    "--gateway-auth", "token",
+    "--gateway-token-ref-env", "OPENCLAW_GATEWAY_TOKEN",
+    "--no-install-daemon",
+  ], 180_000);
+
+  if (r.code === 0 && isConfigured()) {
+    console.log("[snapclaw] onboarding complete, applying config...");
+    await applyPostSetupConfig();
+    return true;
+  }
+  console.error("[snapclaw] onboarding failed:", redactSecrets(r.output));
+  return false;
+}
 
 // --- Proxy ---
 
@@ -225,9 +234,71 @@ async function handleRequest(
       });
     }
 
-    // API: auth groups
-    if (url === "/setup/api/auth-groups" && method === "GET") {
-      return sendJson(res, { ok: true, authGroups: AUTH_GROUPS });
+    // API: codex OAuth start
+    if (url === "/setup/api/codex/start" && method === "POST") {
+      const r = await runCmd("openclaw", [
+        "onboard",
+        "--non-interactive",
+        "--accept-risk",
+        "--skip-health",
+        "--flow", "quickstart",
+        "--mode", "local",
+        "--auth-choice", "codex-cli",
+        "--gateway-port", String(INTERNAL_PORT),
+        "--gateway-bind", "loopback",
+        "--gateway-auth", "token",
+        "--gateway-token-ref-env", "OPENCLAW_GATEWAY_TOKEN",
+        "--no-install-daemon",
+      ], 60_000);
+      const output = redactSecrets(r.output);
+      // Parse OAuth URL from output
+      const urlMatch = output.match(/https?:\/\/[^\s"'<>]+oauth[^\s"'<>]*/i)
+        ?? output.match(/https?:\/\/[^\s"'<>]+login[^\s"'<>]*/i)
+        ?? output.match(/https?:\/\/[^\s"'<>]+auth[^\s"'<>]*/i);
+      return sendJson(res, {
+        ok: r.code === 0,
+        oauthUrl: urlMatch ? urlMatch[0] : null,
+        output,
+      });
+    }
+
+    // API: codex OAuth callback
+    if (url === "/setup/api/codex/callback" && method === "POST") {
+      const body = await readJson(req);
+      const redirectUrl = String(body.redirectUrl ?? "").trim();
+      if (!redirectUrl) {
+        return sendJson(res, { ok: false, error: "Missing redirectUrl" }, 400);
+      }
+      // Pass the redirect URL to openclaw to complete OAuth
+      const r = await runCmd("openclaw", ["auth", "callback", redirectUrl], 30_000);
+      if (r.code === 0) {
+        await applyPostSetupConfig();
+        await gateway.restart();
+      }
+      return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+
+    // API: telegram add
+    if (url === "/setup/api/telegram/add" && method === "POST") {
+      const body = await readJson(req);
+      const token = String(body.token ?? "").trim();
+      if (!token || !/^\d+:[A-Za-z0-9_-]+$/.test(token)) {
+        return sendJson(res, { ok: false, error: "Invalid bot token format" }, 400);
+      }
+      const r = await runCmd("openclaw", [
+        "channels", "add", "--channel", "telegram", "--token", token,
+      ]);
+      if (r.code === 0) {
+        await gateway.restart();
+      }
+      return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+
+    // API: telegram verify
+    if (url === "/setup/api/telegram/verify" && method === "GET") {
+      const r = await runCmd("openclaw", ["channels", "list"]);
+      const hasTelegram = r.output.toLowerCase().includes("telegram");
+      return sendJson(res, { ok: true, connected: hasTelegram, output: redactSecrets(r.output) });
     }
 
     // API: terminal token
@@ -273,43 +344,16 @@ async function handleRequest(
       return sendJson(res, { ok: true, path: p });
     }
 
-    // API: run onboard
-    if (url === "/setup/api/run" && method === "POST") {
+    // API: trigger auto-onboard (if not yet configured)
+    if (url === "/setup/api/onboard" && method === "POST") {
       if (isConfigured()) {
-        return sendJson(res, {
-          ok: false,
-          output: "Already configured. Use reset to reconfigure.",
-        });
+        return sendJson(res, { ok: true, output: "Already configured." });
       }
-      const body = await readJson(req);
-      const args = buildOnboardArgs(body);
-      const r = await runCmd("openclaw", args, 180_000);
-      const output = redactSecrets(r.output);
-
-      if (r.code === 0 && isConfigured()) {
-        // Post-setup: sync config
-        await runCmd("openclaw", ["config", "set", "gateway.auth.mode", "token"]);
-        await runCmd("openclaw", ["config", "set", "gateway.auth.token", GATEWAY_TOKEN]);
-        await runCmd("openclaw", ["config", "set", "gateway.remote.token", GATEWAY_TOKEN]);
-        await runCmd("openclaw", ["config", "set", "gateway.bind", "loopback"]);
-        await runCmd("openclaw", ["config", "set", "gateway.port", String(INTERNAL_PORT)]);
-        await runCmd("openclaw", [
-          "config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]',
-        ]);
-
-        // Set allowed origins
-        const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
-        if (domain) {
-          await runCmd("openclaw", [
-            "config", "set", "--json", "gateway.controlUi.allowedOrigins",
-            JSON.stringify([`https://${domain}`, `http://localhost:${PORT}`]),
-          ]);
-        }
-
+      const ok = await autoOnboard();
+      if (ok) {
         await gateway.restart();
       }
-
-      return sendJson(res, { ok: r.code === 0, output: `[setup] ${output}` });
+      return sendJson(res, { ok, output: ok ? "Configured." : "Onboarding failed." });
     }
 
     // API: console
@@ -474,50 +518,6 @@ async function handleRequest(
   proxy.web(req, res, { target: GATEWAY_TARGET });
 }
 
-// --- Onboard args builder ---
-
-function buildOnboardArgs(body: Record<string, unknown>): string[] {
-  const args = [
-    "onboard",
-    "--non-interactive",
-    "--accept-risk",
-    "--skip-health",
-    "--flow",
-    String(body.flow ?? "quickstart"),
-    "--mode",
-    "local",
-    "--gateway-port",
-    String(INTERNAL_PORT),
-    "--gateway-bind",
-    "loopback",
-    "--gateway-auth",
-    "token",
-    "--gateway-token-ref-env",
-    "OPENCLAW_GATEWAY_TOKEN",
-    "--no-install-daemon",
-  ];
-
-  const choice = String(body.authChoice ?? "");
-  const secret = String(body.authSecret ?? "").trim();
-
-  if (choice) args.push("--auth-choice", choice);
-
-  const keyFlags: Record<string, string> = {
-    "openai-api-key": "--openai-api-key",
-    apiKey: "--anthropic-api-key",
-    "gemini-api-key": "--gemini-api-key",
-    "openrouter-api-key": "--openrouter-api-key",
-  };
-
-  if (keyFlags[choice] && secret) {
-    args.push(keyFlags[choice], secret);
-  } else if (choice === "token" && secret) {
-    args.push("--token-provider", "anthropic", "--token", secret);
-  }
-
-  return args;
-}
-
 // --- Server ---
 
 const server = http.createServer(async (req, res) => {
@@ -593,7 +593,13 @@ server.listen(PORT, "0.0.0.0", async () => {
     console.warn(`[snapclaw] failed to copy skills: ${err}`);
   }
 
-  // Auto-start gateway if configured
+  // Auto-onboard if not configured
+  if (!isConfigured()) {
+    console.log("[snapclaw] first start — auto-onboarding...");
+    await autoOnboard();
+  }
+
+  // Start gateway if configured
   if (isConfigured()) {
     console.log("[snapclaw] starting gateway...");
     try {

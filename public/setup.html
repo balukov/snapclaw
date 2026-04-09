@@ -34,58 +34,56 @@
     #statusBar::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
     #statusBar.configured::before { background:var(--success); box-shadow:0 0 8px rgba(52,211,153,.5); }
 
-    #wizardProgress { display:flex; gap:4px; margin-bottom:1.75rem; animation:fadeDown .6s ease .2s both; }
-    .wiz-step { flex:1; text-align:center; padding:.65rem .25rem; font-size:.75rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); background:var(--surface); border:1px solid var(--border); transition:all .3s; }
-    .wiz-step:first-child { border-radius:var(--r) 0 0 var(--r); }
-    .wiz-step:last-child { border-radius:0 var(--r) var(--r) 0; }
-    .wiz-step.active { color:var(--accent); background:var(--accent-glow); border-color:var(--accent); }
-    .wiz-step.done { color:var(--success); background:var(--success-bg); border-color:rgba(52,211,153,.3); }
-    .wiz-num { display:inline-block; width:1.3rem; height:1.3rem; line-height:1.3rem; border-radius:50%; background:var(--border); color:var(--muted); font-size:.7rem; margin-right:.35rem; text-align:center; transition:all .3s; }
-    .wiz-step.active .wiz-num { background:var(--accent); color:#fff; }
-    .wiz-step.done .wiz-num { background:var(--success); color:#fff; }
-
-    .wizard-card { display:none; }
-    .wizard-card.active { display:block; animation:fadeUp .4s ease; }
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1.5rem; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1.5rem; margin-bottom:1.25rem; animation:fadeUp .4s ease; }
     .card h2 { font-size:1.15rem; font-weight:700; margin-bottom:.35rem; }
-    .card h3 { font-size:.95rem; font-weight:600; margin-top:1.5rem; margin-bottom:.25rem; }
+    .card h3 { font-size:.95rem; font-weight:600; margin-top:1.25rem; margin-bottom:.25rem; }
     .muted { color:var(--muted); font-size:.88rem; line-height:1.5; }
     .muted a { color:var(--accent); text-decoration:none; }
     .muted a:hover { text-decoration:underline; }
 
     label { display:block; margin-top:.75rem; font-weight:600; font-size:.85rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
-    input,select { width:100%; padding:.65rem .85rem; margin-top:.3rem; border:1px solid var(--border); border-radius:10px; font-size:.9rem; font-family:'JetBrains Mono',monospace; background:var(--bg); color:var(--text); transition:border-color .2s; }
-    input:focus,select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+    input { width:100%; padding:.65rem .85rem; margin-top:.3rem; border:1px solid var(--border); border-radius:10px; font-size:.9rem; font-family:'JetBrains Mono',monospace; background:var(--bg); color:var(--text); transition:border-color .2s; }
+    input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
     input::placeholder { color:#555; }
 
     button { padding:.7rem 1.6rem; border-radius:10px; border:0; background:var(--accent); color:#fff; font-weight:700; font-size:.9rem; font-family:'DM Sans',sans-serif; cursor:pointer; transition:all .2s; }
     button:hover { filter:brightness(1.1); transform:translateY(-1px); box-shadow:0 4px 16px rgba(232,93,58,.3); }
     button:active { transform:translateY(0); }
+    button:disabled { opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; filter:none; }
     .btn-secondary { background:var(--surface); color:var(--muted); border:1px solid var(--border); }
     .btn-secondary:hover { background:#22252f; color:var(--text); box-shadow:none; }
+
+    .url-row { display:flex; gap:.5rem; align-items:center; margin-top:.5rem; }
+    .url-row input { flex:1; }
+    .url-row button { flex-shrink:0; padding:.65rem 1rem; }
+
+    .status-badge { display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .75rem; border-radius:8px; font-size:.8rem; font-weight:600; margin-top:.75rem; }
+    .status-badge.success { background:var(--success-bg); color:var(--success); border:1px solid rgba(52,211,153,.3); }
+    .status-badge.pending { background:var(--accent-glow); color:var(--accent); border:1px solid rgba(232,93,58,.3); }
 
     pre { white-space:pre-wrap; word-break:break-word; background:var(--bg); border:1px solid var(--border); color:var(--muted); padding:.75rem; border-radius:10px; font-size:.8rem; font-family:'JetBrains Mono',monospace; max-height:200px; overflow-y:auto; margin-top:.5rem; }
     code { background:var(--bg); border:1px solid var(--border); padding:.15rem .45rem; border-radius:6px; font-size:.82em; font-family:'JetBrains Mono',monospace; color:var(--accent); }
 
-    .term-controls { display:flex; gap:.5rem; margin-bottom:.75rem; flex-wrap:wrap; }
-    #terminalContainer { border-radius:12px; overflow:hidden; background:#0c0e14; border:1px solid var(--border); }
-    #terminal { padding:6px; }
-
-    .pairing-form { display:flex; gap:.6rem; align-items:end; flex-wrap:wrap; margin-top:.5rem; }
-    .pairing-form > div { flex:1; min-width:130px; }
-    .pairing-form button { margin-top:.75rem; }
     .btn-row { display:flex; gap:.5rem; margin-top:1.25rem; }
 
-    .done-box { text-align:center; padding:3rem 1.5rem; }
-    .done-box img { width:100px; margin-bottom:1rem; animation:bounce 2s ease infinite; }
-    .done-box h2 { font-size:1.5rem; background:linear-gradient(135deg,var(--success),#a7f3d0); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:.5rem; }
-    .done-box .btn-primary { display:inline-block; padding:.85rem 2.5rem; background:var(--accent); color:#fff; border-radius:12px; text-decoration:none; font-weight:700; font-size:1rem; font-family:'DM Sans',sans-serif; transition:all .2s; margin:.4rem; }
-    .done-box .btn-primary:hover { filter:brightness(1.1); transform:translateY(-2px); box-shadow:0 6px 20px rgba(232,93,58,.35); }
+    .done-link { display:inline-block; padding:.85rem 2.5rem; background:var(--accent); color:#fff; border-radius:12px; text-decoration:none; font-weight:700; font-size:1rem; font-family:'DM Sans',sans-serif; transition:all .2s; margin-top:1.5rem; }
+    .done-link:hover { filter:brightness(1.1); transform:translateY(-2px); box-shadow:0 6px 20px rgba(232,93,58,.35); }
+
+    ol.steps { padding-left:1.25rem; margin:.5rem 0; }
+    ol.steps li { color:var(--muted); font-size:.88rem; line-height:1.8; }
+    ol.steps a { color:var(--accent); text-decoration:none; }
+    ol.steps a:hover { text-decoration:underline; }
+
+    .hidden { display:none !important; }
+
+    /* Dashboard */
+    .term-controls { display:flex; gap:.5rem; margin-bottom:.75rem; flex-wrap:wrap; }
+    #dashTerminalContainer { border-radius:12px; overflow:hidden; background:#0c0e14; border:1px solid var(--border); }
+    #dashTerminal { padding:6px; }
 
     @keyframes fadeDown { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
     @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-    @media(max-width:500px) { .container{padding:1.25rem 1rem 3rem} .header img{width:48px;height:48px} .pairing-form{flex-direction:column} }
+    @media(max-width:500px) { .container{padding:1.25rem 1rem 3rem} .header img{width:48px;height:48px} }
   </style>
 </head>
 <body>
@@ -102,68 +100,75 @@
     <span id="status">Loading...</span>
   </div>
 
-  <div id="wizardProgress">
-    <div class="wiz-step" data-step="1"><span class="wiz-num">1</span> Setup</div>
-    <div class="wiz-step" data-step="2"><span class="wiz-num">2</span> Approve</div>
-    <div class="wiz-step" data-step="3"><span class="wiz-num">3</span> Done</div>
+  <!-- Setup cards (shown when not fully configured) -->
+  <div id="setupCards">
+
+    <!-- Codex OAuth -->
+    <div class="card" id="codexCard">
+      <h2>Codex</h2>
+      <p class="muted">Connect via OpenAI Codex OAuth</p>
+
+      <div id="codexStart">
+        <button id="codexStartBtn">Start OAuth</button>
+      </div>
+
+      <div id="codexUrl" class="hidden">
+        <label>Copy this URL and open it in your browser</label>
+        <div class="url-row">
+          <input id="codexOauthUrl" readonly />
+          <button id="codexCopyBtn" class="btn-secondary">Copy</button>
+        </div>
+
+        <label>Paste the redirect URL you land on</label>
+        <div class="url-row">
+          <input id="codexRedirectUrl" placeholder="https://..." />
+          <button id="codexCompleteBtn">Done</button>
+        </div>
+      </div>
+
+      <div id="codexStatus"></div>
+      <pre id="codexOutput" class="hidden"></pre>
+    </div>
+
+    <!-- Telegram -->
+    <div class="card" id="telegramCard">
+      <h2>Telegram</h2>
+      <p class="muted">Connect a Telegram bot</p>
+
+      <ol class="steps">
+        <li>Open <a href="https://t.me/BotFather" target="_blank">@BotFather</a> in Telegram</li>
+        <li>Send <code>/newbot</code> and follow the instructions</li>
+        <li>Copy the bot token and paste it below</li>
+      </ol>
+
+      <label>Bot token</label>
+      <div class="url-row">
+        <input id="telegramToken" placeholder="123456789:ABCdefGHI..." />
+        <button id="telegramConnectBtn">Connect</button>
+      </div>
+
+      <div id="telegramStatus"></div>
+      <pre id="telegramOutput" class="hidden"></pre>
+    </div>
+
+    <!-- Open Web UI link -->
+    <div style="text-align:center">
+      <a href="/" target="_blank" class="done-link">Open Web UI</a>
+    </div>
+
   </div>
 
-  <div class="wizard-card card" id="step1">
-    <h2>Step 1: Setup</h2>
-    <p class="muted">Run the setup wizard. It will guide you through choosing an AI provider and configuring your bot.</p>
-    <div class="term-controls">
-      <button id="termStart">Start setup</button>
-      <button id="termShell" class="btn-secondary">Open shell</button>
-    </div>
-    <div id="terminalContainer"><div id="terminal"></div></div>
-    <div class="btn-row" id="step1Done" style="display:none">
-      <button id="step1Next">Onboarding complete</button>
-    </div>
-  </div>
-
-  <div class="wizard-card card" id="step2">
-    <h2>Step 2: Approve devices</h2>
-    <p class="muted">Approve your devices so you can talk to the bot.</p>
-
-    <h3>1. Open Web UI</h3>
-    <p class="muted"><a href="/" target="_blank">Open Web UI</a> in a new tab, then come back here.</p>
-
-    <h3>2. Approve messenger</h3>
-    <p class="muted">Message your bot — it will show a pairing code. Enter it here.</p>
-    <div class="pairing-form">
-      <div><label>Channel</label><select id="pairingChannel"><option value="telegram">Telegram</option><option value="discord">Discord</option></select></div>
-      <div><label>Pairing code</label><input id="pairingCode" placeholder="e.g. 3EY4PUYS" /></div>
-      <button id="pairingApprove">Approve</button>
-    </div>
-    <pre id="pairingOut" style="display:none"></pre>
-
-    <h3>3. Approve Web UI</h3>
-    <button id="devicesRefresh" class="btn-secondary" style="margin-top:.5rem">Refresh pending devices</button>
-    <div id="devicesList" class="muted" style="margin-top:.5rem"></div>
-
-    <div class="btn-row"><button id="step2Done">Continue</button></div>
-  </div>
-
-  <div class="wizard-card" id="step3">
-    <div class="done-box">
-      <img src="/snapclaw-icon.png" alt="" onerror="this.style.display='none'" />
-      <h2>Congratulations!</h2>
-      <p class="muted" style="margin-bottom:1.5rem">Your bot is ready.</p>
-      <a href="/" target="_blank" class="btn-primary">Open Web UI</a>
-      <p class="muted" style="margin-top:1.5rem">Or message your bot in Telegram, Discord, or any channel you configured.</p>
-    </div>
-  </div>
-
-  <div id="dashboard" style="display:none">
-    <div class="card" style="margin-bottom:1rem">
+  <!-- Dashboard (shown when already configured) -->
+  <div id="dashboard" class="hidden">
+    <div class="card">
       <div class="term-controls">
         <button id="dashShell">Open terminal</button>
         <button id="dashRestart" class="btn-secondary">Restart gateway</button>
       </div>
-      <div id="dashTermContainer" style="display:none">
-        <div id="dashTerminalContainer" style="border-radius:12px;overflow:hidden;background:#0c0e14;border:1px solid var(--border)"><div id="dashTerminal"></div></div>
+      <div id="dashTermContainer" class="hidden">
+        <div id="dashTerminalContainer"><div id="dashTerminal"></div></div>
       </div>
-      <pre id="dashOutput" style="display:none"></pre>
+      <pre id="dashOutput" class="hidden"></pre>
     </div>
   </div>
 </div>
