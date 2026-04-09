@@ -106,19 +106,28 @@
     <!-- Codex OAuth -->
     <div class="card" id="codexCard">
       <h2>Codex</h2>
-      <p class="muted">Connect via OpenAI Codex OAuth. Follow the prompts in the terminal below.</p>
+      <p class="muted">Connect via OpenAI Codex OAuth</p>
 
       <div id="codexStart" style="margin-top:.75rem">
-        <button id="codexStartBtn">Start setup</button>
+        <button id="codexStartBtn">Start OAuth</button>
       </div>
 
-      <div id="codexTermContainer" class="hidden" style="margin-top:.75rem">
-        <div style="border-radius:12px;overflow:hidden;background:#0c0e14;border:1px solid var(--border)">
-          <div id="codexTerminal"></div>
+      <div id="codexUrl" class="hidden">
+        <label>Copy this URL and open it in your browser</label>
+        <div class="url-row">
+          <input id="codexOauthUrl" readonly />
+          <button id="codexCopyBtn" class="btn-secondary">Copy</button>
+        </div>
+
+        <label>Paste the redirect URL you land on</label>
+        <div class="url-row">
+          <input id="codexRedirectUrl" placeholder="https://..." />
+          <button id="codexCompleteBtn">Done</button>
         </div>
       </div>
 
       <div id="codexStatus"></div>
+      <pre id="codexOutput" class="hidden"></pre>
     </div>
 
     <!-- Telegram -->

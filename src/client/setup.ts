@@ -68,80 +68,89 @@ function showOutput(el: HTMLElement, text: string): void {
   el.textContent = text;
 }
 
-// --- Codex (interactive terminal) ---
-
-let codexTerm: InstanceType<typeof Terminal> | null = null;
-let codexWs: WebSocket | null = null;
-let codexFit: ReturnType<typeof FitAddon.FitAddon.prototype.constructor> | null = null;
-
-function connectCodexTerminal(command: string): void {
-  if (codexWs && codexWs.readyState <= WebSocket.OPEN) return;
-
-  $("codexTermContainer").classList.remove("hidden");
-  $("codexStart").classList.add("hidden");
-
-  if (!codexTerm) {
-    codexTerm = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: "JetBrains Mono, monospace",
-      theme: {
-        background: "#0c0e14",
-        foreground: "#e8e6e3",
-        cursor: "#e85d3a",
-        selectionBackground: "rgba(232,93,58,0.25)",
-      },
-      convertEol: true,
-    });
-    codexFit = new FitAddon.FitAddon();
-    codexTerm.loadAddon(codexFit);
-    codexTerm.open($("codexTerminal"));
-    codexFit.fit();
-    window.addEventListener("resize", () => codexFit?.fit());
-  }
-
-  codexTerm.clear();
-  codexTerm.writeln("\x1b[1;32mStarting Codex setup...\x1b[0m\r\n");
-
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  httpJson<{ token: string }>("/snapclaw/api/terminal-token")
-    .then((j) => {
-      const url = `${proto}//${location.host}/snapclaw/terminal?token=${encodeURIComponent(j.token)}`;
-      codexWs = new WebSocket(url);
-
-      codexWs.onopen = () => {
-        const dims = codexFit!.proposeDimensions();
-        if (dims)
-          codexWs!.send(JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }));
-        setTimeout(() => codexWs!.send(command + "\n"), 500);
-      };
-      codexWs.onmessage = (e: MessageEvent) => codexTerm!.write(e.data as string);
-      codexWs.onclose = () => {
-        codexTerm!.writeln("\r\n\x1b[1;33mSetup finished.\x1b[0m");
-        refreshStatus().then(() => {
-          if (isConfigured) {
-            setBadge($("codexStatus"), "success", "Connected");
-          }
-        });
-      };
-      codexWs.onerror = () => codexTerm!.writeln("\r\n\x1b[1;31mConnection error.\x1b[0m");
-      codexTerm!.onData((d: string) => {
-        if (codexWs && codexWs.readyState === WebSocket.OPEN) codexWs.send(d);
-      });
-      codexTerm!.onResize((s: { cols: number; rows: number }) => {
-        if (codexWs && codexWs.readyState === WebSocket.OPEN)
-          codexWs.send(JSON.stringify({ type: "resize", cols: s.cols, rows: s.rows }));
-      });
-    })
-    .catch((e: Error) => codexTerm!.writeln(`\x1b[1;31mFailed: ${e}\x1b[0m`));
-}
+// --- Codex OAuth ---
 
 $("codexStartBtn").onclick = async () => {
+  const btn = $("codexStartBtn") as HTMLButtonElement;
+  btn.disabled = true;
+  btn.textContent = "Starting...";
+  $("codexOutput").classList.add("hidden");
+
   try {
-    const r = await httpJson<{ command: string }>("/snapclaw/api/codex/command");
-    connectCodexTerminal(r.command);
+    const r = await httpJson<{
+      ok: boolean;
+      oauthUrl: string | null;
+      status: string;
+      output?: string;
+    }>("/snapclaw/api/codex/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    if (r.oauthUrl) {
+      ($("codexOauthUrl") as HTMLInputElement).value = r.oauthUrl;
+      $("codexUrl").classList.remove("hidden");
+      $("codexStart").classList.add("hidden");
+      setBadge($("codexStatus"), "pending", "Waiting for redirect URL...");
+    } else if (r.status === "done") {
+      setBadge($("codexStatus"), "success", "Connected");
+      $("codexStart").classList.add("hidden");
+      await refreshStatus();
+    } else {
+      showOutput($("codexOutput"), r.output ?? "No OAuth URL found. Try again.");
+      btn.disabled = false;
+      btn.textContent = "Start OAuth";
+    }
   } catch (e) {
-    alert(`Failed to start: ${e}`);
+    showOutput($("codexOutput"), `Error: ${e}`);
+    btn.disabled = false;
+    btn.textContent = "Start OAuth";
+  }
+};
+
+$("codexCopyBtn").onclick = () => {
+  const input = $("codexOauthUrl") as HTMLInputElement;
+  navigator.clipboard.writeText(input.value).then(() => {
+    $("codexCopyBtn").textContent = "Copied!";
+    setTimeout(() => { $("codexCopyBtn").textContent = "Copy"; }, 2000);
+  });
+};
+
+$("codexCompleteBtn").onclick = async () => {
+  const redirectUrl = ($("codexRedirectUrl") as HTMLInputElement).value.trim();
+  if (!redirectUrl) {
+    alert("Paste the redirect URL first.");
+    return;
+  }
+
+  const btn = $("codexCompleteBtn") as HTMLButtonElement;
+  btn.disabled = true;
+  btn.textContent = "Verifying...";
+
+  try {
+    const r = await httpJson<{ ok: boolean; output: string }>(
+      "/snapclaw/api/codex/callback",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ redirectUrl }),
+      },
+    );
+
+    if (r.ok) {
+      setBadge($("codexStatus"), "success", "Connected");
+      $("codexUrl").classList.add("hidden");
+      await refreshStatus();
+    } else {
+      showOutput($("codexOutput"), r.output);
+      btn.disabled = false;
+      btn.textContent = "Done";
+    }
+  } catch (e) {
+    showOutput($("codexOutput"), `Error: ${e}`);
+    btn.disabled = false;
+    btn.textContent = "Done";
   }
 };
 

@@ -145,6 +145,83 @@ async function autoOnboard(): Promise<boolean> {
   return false;
 }
 
+// --- Codex interactive session ---
+
+interface CodexSession {
+  pty: ReturnType<typeof pty.spawn>;
+  oauthUrl: string | null;
+  status: "waiting" | "done" | "error";
+  output: string;
+}
+
+let codexSession: CodexSession | null = null;
+
+function startCodexSession(): CodexSession {
+  const args = [
+    "onboard",
+    "--accept-risk",
+    "--skip-health",
+    "--flow", "quickstart",
+    "--mode", "local",
+    "--auth-choice", "openai-codex",
+    "--gateway-port", String(INTERNAL_PORT),
+    "--gateway-bind", "loopback",
+    "--gateway-auth", "token",
+    "--gateway-token-ref-env", "OPENCLAW_GATEWAY_TOKEN",
+    "--no-install-daemon",
+  ];
+
+  const shell = pty.spawn("openclaw", args, {
+    name: "xterm-256color",
+    cols: 120,
+    rows: 30,
+    cwd: "/tmp",
+    env: {
+      ...process.env,
+      OPENCLAW_STATE_DIR: STATE_DIR,
+      OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
+      TERM: "xterm-256color",
+    } as Record<string, string>,
+  });
+
+  const session: CodexSession = {
+    pty: shell,
+    oauthUrl: null,
+    status: "waiting",
+    output: "",
+  };
+
+  shell.onData((data: string) => {
+    session.output += data;
+    // Look for OAuth URL in output
+    if (!session.oauthUrl) {
+      // Strip ANSI escape codes for URL matching
+      const clean = session.output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+      const match = clean.match(/https?:\/\/[^\s"'<>\x00-\x1f]+/g);
+      if (match) {
+        // Pick the most likely OAuth URL (last one, usually the login URL)
+        session.oauthUrl = match[match.length - 1];
+      }
+    }
+  });
+
+  shell.onExit(({ exitCode }) => {
+    session.status = exitCode === 0 ? "done" : "error";
+  });
+
+  codexSession = session;
+
+  // Auto-cleanup after 5 minutes
+  setTimeout(() => {
+    if (codexSession === session) {
+      try { shell.kill(); } catch {}
+      codexSession = null;
+    }
+  }, 300_000);
+
+  return session;
+}
+
 // --- Proxy ---
 
 const proxy = httpProxy.createProxyServer({
@@ -260,22 +337,71 @@ async function handleRequest(
       });
     }
 
-    // API: codex setup command (returns the command to run in terminal)
-    if (url === "/snapclaw/api/codex/command" && method === "GET") {
-      const cmd = [
-        "openclaw", "onboard",
-        "--accept-risk",
-        "--skip-health",
-        "--flow", "quickstart",
-        "--mode", "local",
-        "--auth-choice", "openai-codex",
-        "--gateway-port", String(INTERNAL_PORT),
-        "--gateway-bind", "loopback",
-        "--gateway-auth", "token",
-        "--gateway-token-ref-env", "OPENCLAW_GATEWAY_TOKEN",
-        "--no-install-daemon",
-      ].join(" ");
-      return sendJson(res, { ok: true, command: cmd });
+    // API: codex OAuth start — spawns interactive onboard, captures OAuth URL
+    if (url === "/snapclaw/api/codex/start" && method === "POST") {
+      if (codexSession) {
+        // Already running — return current state
+        return sendJson(res, {
+          ok: true,
+          oauthUrl: codexSession.oauthUrl,
+          status: codexSession.status,
+        });
+      }
+
+      const session = startCodexSession();
+      // Wait up to 30s for the OAuth URL to appear
+      const deadline = Date.now() + 30_000;
+      while (!session.oauthUrl && session.status === "waiting" && Date.now() < deadline) {
+        await sleep(500);
+      }
+
+      return sendJson(res, {
+        ok: true,
+        oauthUrl: session.oauthUrl,
+        status: session.status,
+        output: redactSecrets(session.output),
+      });
+    }
+
+    // API: codex OAuth callback — sends redirect URL to the running onboard process
+    if (url === "/snapclaw/api/codex/callback" && method === "POST") {
+      const body = await readJson(req);
+      const redirectUrl = String(body.redirectUrl ?? "").trim();
+      if (!redirectUrl) {
+        return sendJson(res, { ok: false, error: "Missing redirectUrl" }, 400);
+      }
+      if (!codexSession || !codexSession.pty) {
+        return sendJson(res, { ok: false, error: "No active Codex session" }, 400);
+      }
+
+      // Write the redirect URL into the PTY (as if user pasted it)
+      codexSession.pty.write(redirectUrl + "\n");
+
+      // Wait for process to finish
+      const deadline = Date.now() + 30_000;
+      while (codexSession.status === "waiting" && Date.now() < deadline) {
+        await sleep(500);
+      }
+
+      const ok = codexSession.status === "done";
+      if (ok) {
+        await applyPostSetupConfig();
+        await gateway.restart();
+      }
+
+      const output = redactSecrets(codexSession.output);
+      codexSession = null;
+      return sendJson(res, { ok, output });
+    }
+
+    // API: codex status
+    if (url === "/snapclaw/api/codex/status" && method === "GET") {
+      return sendJson(res, {
+        ok: true,
+        active: !!codexSession,
+        oauthUrl: codexSession?.oauthUrl ?? null,
+        status: codexSession?.status ?? "idle",
+      });
     }
 
     // API: telegram add
