@@ -193,14 +193,31 @@ function startCodexSession(): CodexSession {
 
   shell.onData((data: string) => {
     session.output += data;
+    console.log("[codex-pty]", JSON.stringify(data));
+
+    // Strip ANSI escape codes for matching
+    const clean = session.output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+
+    // Auto-answer common interactive prompts by pressing Enter (accept default)
+    // or answering yes/no questions
+    const lastChunk = clean.slice(-200);
+    if (lastChunk.match(/\?\s*$/)) {
+      // A question is being asked — send Enter to accept default
+      console.log("[codex-pty] auto-answering prompt with Enter");
+      shell.write("\n");
+    }
+    if (lastChunk.match(/\(y\/n\)\s*$/i) || lastChunk.match(/\[Y\/n\]\s*$/)) {
+      console.log("[codex-pty] auto-answering y/n with y");
+      shell.write("y\n");
+    }
+
     // Look for OAuth URL in output
     if (!session.oauthUrl) {
-      // Strip ANSI escape codes for URL matching
-      const clean = session.output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
       const match = clean.match(/https?:\/\/[^\s"'<>\x00-\x1f]+/g);
       if (match) {
         // Pick the most likely OAuth URL (last one, usually the login URL)
         session.oauthUrl = match[match.length - 1];
+        console.log("[codex-pty] found OAuth URL:", session.oauthUrl);
       }
     }
   });
@@ -339,18 +356,15 @@ async function handleRequest(
 
     // API: codex OAuth start — spawns interactive onboard, captures OAuth URL
     if (url === "/snapclaw/api/codex/start" && method === "POST") {
+      // Kill stale session
       if (codexSession) {
-        // Already running — return current state
-        return sendJson(res, {
-          ok: true,
-          oauthUrl: codexSession.oauthUrl,
-          status: codexSession.status,
-        });
+        try { codexSession.pty.kill(); } catch {}
+        codexSession = null;
       }
 
       const session = startCodexSession();
-      // Wait up to 30s for the OAuth URL to appear
-      const deadline = Date.now() + 30_000;
+      // Wait up to 45s for the OAuth URL to appear
+      const deadline = Date.now() + 45_000;
       while (!session.oauthUrl && session.status === "waiting" && Date.now() < deadline) {
         await sleep(500);
       }
