@@ -242,22 +242,26 @@ setupTermWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
     } as Record<string, string>,
   });
 
-  let ptyBuffer = "";
+  let skipBuf = "";
+  let skipDone = false;
   shell.onData((data: string) => {
     try { ws.send(data); } catch {}
-    if (config.autoSkipPatterns?.length) {
-      ptyBuffer += data;
-      const clean = ptyBuffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+    if (config.autoSkipPatterns?.length && !skipDone) {
+      skipBuf += data;
+      const clean = skipBuf.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
+        .replace(/\x1b\][^\x07]*\x07/g, "")
+        .replace(/\x1b[()][0-9A-B]/g, "");
       for (const pat of config.autoSkipPatterns) {
         if (pat.test(clean)) {
           console.log(`[setup-terminal] auto-skipping: ${pat}`);
-          shell.write("\n");
-          ptyBuffer = "";
+          // Small delay to let the prompt fully render before sending Enter
+          setTimeout(() => shell.write("\n"), 200);
+          skipDone = true;
           return;
         }
       }
-      // Keep buffer from growing unbounded
-      if (ptyBuffer.length > 2000) ptyBuffer = ptyBuffer.slice(-1000);
+      // Rolling window
+      if (skipBuf.length > 5000) skipBuf = skipBuf.slice(-3000);
     }
   });
 
