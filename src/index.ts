@@ -362,7 +362,17 @@ async function handleRequest(
         codexSession = null;
       }
 
-      const session = startCodexSession();
+      let session: CodexSession;
+      try {
+        session = startCodexSession();
+      } catch (err: any) {
+        console.error("[codex/start] failed to spawn PTY:", err);
+        return sendJson(res, {
+          ok: false,
+          error: `Failed to spawn codex session: ${err.message ?? err}`,
+        }, 500);
+      }
+
       // Wait up to 45s for the OAuth URL to appear
       const deadline = Date.now() + 45_000;
       while (!session.oauthUrl && session.status === "waiting" && Date.now() < deadline) {
