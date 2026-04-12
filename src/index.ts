@@ -253,9 +253,9 @@ setupTermWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
         .replace(/\x1b[()][0-9A-B]/g, "");
       for (const pat of config.autoSkipPatterns) {
         if (pat.test(clean)) {
-          console.log(`[setup-terminal] auto-skipping: ${pat}`);
-          // Small delay to let the prompt fully render before sending Enter
-          setTimeout(() => shell.write("\n"), 200);
+          console.log(`[setup-terminal] auto-skipping: ${pat}, buffer tail: ${clean.slice(-100)}`);
+          // PTY expects \r for Enter, not \n
+          setTimeout(() => shell.write("\r"), 300);
           skipDone = true;
           return;
         }
