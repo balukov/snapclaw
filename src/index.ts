@@ -152,19 +152,7 @@ const setupTermWss = new WebSocketServer({ noServer: true });
 const setupCommands: Record<string, { cmd: string; args: string[]; onSuccess?: () => Promise<void> }> = {
   codex: {
     cmd: "openclaw",
-    args: [
-      "onboard",
-      "--accept-risk",
-      "--skip-health",
-      "--flow", "quickstart",
-      "--mode", "local",
-      "--auth-choice", "openai-codex",
-      "--gateway-port", String(INTERNAL_PORT),
-      "--gateway-bind", "loopback",
-      "--gateway-auth", "token",
-      "--gateway-token-ref-env", "OPENCLAW_GATEWAY_TOKEN",
-      "--no-install-daemon",
-    ],
+    args: ["configure", "--section", "model"],
     onSuccess: async () => {
       await applyPostSetupConfig();
       await gateway.restart();
@@ -172,7 +160,7 @@ const setupCommands: Record<string, { cmd: string; args: string[]; onSuccess?: (
   },
   telegram: {
     cmd: "openclaw",
-    args: ["channels", "add", "--channel", "telegram"],
+    args: ["configure", "--section", "channels"],
     onSuccess: async () => {
       channelsReady = true;
       await gateway.restart();
