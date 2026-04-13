@@ -182,19 +182,18 @@
 
   <!-- Dashboard (shown when fully configured) -->
   <div id="dashboard" class="hidden">
-    <div class="card" style="text-align:center; padding:2rem 1.5rem;">
-      <div style="font-size:2rem; margin-bottom:.75rem;">&#127881;</div>
-      <h2 style="margin-bottom:.5rem;">You're all set!</h2>
-      <p class="muted" style="line-height:1.6">
-        Your agent is running. Message your Telegram bot or use the Web UI to start chatting.
-      </p>
-      <div style="display:flex; gap:.75rem; justify-content:center; margin-top:1.5rem; flex-wrap:wrap;">
-        <a href="/" target="_blank" class="done-link" style="margin:0">Open Web UI</a>
-      </div>
-    </div>
-
     <div class="card">
-      <h2 style="font-size:1rem; margin-bottom:.75rem;">Admin</h2>
+      <div class="step-header">
+        <span class="step-number done">3</span>
+        <div>
+          <h2>You're all set!</h2>
+          <p class="muted">Your agent is running. Message your Telegram bot or use the Web UI to start chatting.</p>
+        </div>
+      </div>
+      <div style="display:flex; gap:.75rem; margin-top:1.25rem; flex-wrap:wrap;">
+        <a href="/" target="_blank" class="done-link" style="margin:0; font-size:.9rem; padding:.7rem 1.6rem;">Open Web UI</a>
+      </div>
+      <h3 style="font-size:.85rem; color:var(--muted); margin-top:1.5rem; margin-bottom:.5rem;">Admin</h3>
       <div class="term-controls">
         <button id="dashShell" class="btn-secondary">Terminal</button>
         <button id="dashRestart" class="btn-secondary">Restart gateway</button>
