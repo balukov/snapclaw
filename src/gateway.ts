@@ -94,6 +94,14 @@ async function ensureConfig(): Promise<void> {
     "true",
   ]);
 
+  // Disable device pairing so Control UI connects without manual approval
+  await runCmd("openclaw", [
+    "config",
+    "set",
+    "gateway.controlUi.dangerouslyDisableDeviceAuth",
+    "true",
+  ]);
+
   // Sync gateway tokens
   await runCmd("openclaw", ["config", "set", "gateway.auth.mode", "token"]);
   await runCmd("openclaw", [
@@ -177,6 +185,12 @@ export async function start(): Promise<void> {
         ...process.env,
         OPENCLAW_STATE_DIR: STATE_DIR,
         OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
+        // Ensure gateway can find globally installed plugin deps (grammy, etc.)
+        NODE_PATH: [
+          process.env.NODE_PATH,
+          "/usr/local/lib/node_modules",
+          "/usr/lib/node_modules",
+        ].filter(Boolean).join(":"),
       },
     },
   );

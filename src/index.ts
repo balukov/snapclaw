@@ -112,6 +112,14 @@ async function applyPostSetupConfig(): Promise<void> {
     "config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]',
   ]);
 
+  // Allow Control UI connections without device pairing
+  await runCmd("openclaw", [
+    "config", "set", "--json", "gateway.controlUi.dangerouslyDisableDeviceAuth", "true",
+  ]);
+  await runCmd("openclaw", [
+    "config", "set", "--json", "gateway.controlUi.allowInsecureAuth", "true",
+  ]);
+
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (domain) {
     await runCmd("openclaw", [
