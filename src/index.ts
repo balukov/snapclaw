@@ -28,20 +28,59 @@ import { runCmd, redactSecrets, sleep } from "./utils.js";
 
 const terminalTokens = new Map<string, number>();
 
-function checkBasicAuth(req: http.IncomingMessage): boolean {
-  if (!SETUP_PASSWORD) return true;
-  const header = req.headers.authorization ?? "";
-  const [scheme, encoded] = header.split(" ");
-  if (scheme !== "Basic" || !encoded) return false;
-  const decoded = Buffer.from(encoded, "base64").toString("utf8");
-  const password = decoded.slice(decoded.indexOf(":") + 1);
-  return password === SETUP_PASSWORD;
+const SESSION_SECRET = crypto.randomBytes(16).toString("hex");
+
+function makeSessionToken(): string {
+  const hmac = crypto.createHmac("sha256", SESSION_SECRET);
+  hmac.update(SETUP_PASSWORD);
+  return hmac.digest("hex");
 }
 
-function sendAuth(res: http.ServerResponse): void {
-  res.setHeader("WWW-Authenticate", 'Basic realm="SnapClaw"');
-  res.writeHead(401);
-  res.end("Auth required");
+function checkAuth(req: http.IncomingMessage): boolean {
+  if (!SETUP_PASSWORD) return true;
+  // Check session cookie
+  const cookies = req.headers.cookie ?? "";
+  const match = cookies.match(/snapclaw_session=([a-f0-9]+)/);
+  if (match && match[1] === makeSessionToken()) return true;
+  // Also accept basic auth for API clients
+  const header = req.headers.authorization ?? "";
+  const [scheme, encoded] = header.split(" ");
+  if (scheme === "Basic" && encoded) {
+    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    const password = decoded.slice(decoded.indexOf(":") + 1);
+    return password === SETUP_PASSWORD;
+  }
+  return false;
+}
+
+function sendLoginPage(res: http.ServerResponse, error = ""): void {
+  const errorHtml = error ? `<p style="color:var(--accent);margin-bottom:1rem;font-size:.9rem">${error}</p>` : "";
+  const html = `<!doctype html>
+<html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SnapClaw</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;--accent:#e85d3a;--accent-glow:rgba(232,93,58,0.15);--text:#e8e6e3;--muted:#8b8a88;--r:14px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:2rem;width:100%;max-width:360px;margin:1rem}
+h1{font-size:1.4rem;font-weight:700;margin-bottom:.25rem;background:linear-gradient(135deg,var(--text),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+p{color:var(--muted);font-size:.85rem;margin-bottom:1.25rem}
+input{width:100%;padding:.7rem .85rem;border:1px solid var(--border);border-radius:10px;font-size:.95rem;font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--text);margin-bottom:1rem}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+button{width:100%;padding:.75rem;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:700;font-size:.95rem;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s}
+button:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 4px 16px rgba(232,93,58,.3)}
+</style></head><body>
+<form class="card" method="POST" action="/snapclaw/login">
+<h1>SnapClaw</h1>
+<p>Enter your setup password</p>
+${errorHtml}
+<input type="password" name="password" placeholder="Password" autofocus>
+<button type="submit">Log in</button>
+</form></body></html>`;
+  res.writeHead(200, { "Content-Type": "text/html" });
+  res.end(html);
 }
 
 function sendJson(res: http.ServerResponse, data: unknown, status = 200): void {
@@ -351,7 +390,26 @@ async function handleRequest(
 
   // --- Setup routes (require auth) ---
   if (url.startsWith("/snapclaw")) {
-    if (!checkBasicAuth(req)) return sendAuth(res);
+    // Login form POST
+    if (url === "/snapclaw/login" && method === "POST") {
+      const body = await readBody(req);
+      const params = new URLSearchParams(body.toString("utf8"));
+      const password = params.get("password") ?? "";
+      if (password === SETUP_PASSWORD) {
+        res.writeHead(302, {
+          Location: "/snapclaw",
+          "Set-Cookie": `snapclaw_session=${makeSessionToken()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`,
+        });
+        res.end();
+        return;
+      }
+      return sendLoginPage(res, "Wrong password");
+    }
+
+    // Show login page if not authenticated
+    if (!checkAuth(req)) {
+      return sendLoginPage(res);
+    }
 
     // Setup page
     if (url === "/snapclaw" && method === "GET") {
