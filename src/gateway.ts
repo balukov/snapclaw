@@ -134,15 +134,6 @@ export async function start(): Promise<void> {
     const plugins = cfg?.plugins?.entries;
     if (plugins) {
       let modified = false;
-      for (const [name, entry] of Object.entries(plugins)) {
-        const e = entry as Record<string, unknown>;
-        // Remove plugins with invalid/broken configs that block gateway startup
-        if (e.config === undefined || e.config === null) {
-          console.log(`[gateway] removing broken plugin: ${name}`);
-          delete plugins[name];
-          modified = true;
-        }
-      }
       // Fix memory-lancedb missing required 'embedding' property
       if (plugins["memory-lancedb"]) {
         const lancedb = plugins["memory-lancedb"] as Record<string, unknown>;
