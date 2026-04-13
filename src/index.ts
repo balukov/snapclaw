@@ -160,6 +160,9 @@ async function applyPostSetupConfig(): Promise<void> {
     "config", "set", "--json", "gateway.controlUi.allowInsecureAuth", "true",
   ]);
 
+  // Clean up onboard boilerplate files
+  try { fs.unlinkSync(path.join(WORKSPACE_DIR, "BOOTSTRAP.md")); } catch {}
+
   const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (domain) {
     await runCmd("openclaw", [
