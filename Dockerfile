@@ -41,7 +41,7 @@ RUN OPENCLAW_DIR="$(dirname "$(readlink -f "$(which openclaw)")")" \
   && npm install grammy @grammyjs/runner @buape/carbon 2>/dev/null; \
   npm install --global grammy @grammyjs/runner @buape/carbon
 
-WORKDIR /app
+WORKDIR /snapclaw
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
@@ -49,7 +49,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY skills ./skills
 
-RUN chown -R node:node /app
+RUN chown -R node:node /snapclaw
 
 # Prepare data directories (Railway mounts volume at /data)
 RUN mkdir -p /data/.openclaw /data/workspace \
@@ -66,4 +66,4 @@ EXPOSE 3000
 ENV NODE_ENV=production
 
 ENTRYPOINT ["tini", "--", "docker-entrypoint.sh"]
-CMD ["node", "dist/index.js"]
+CMD ["node", "/snapclaw/dist/index.js"]
