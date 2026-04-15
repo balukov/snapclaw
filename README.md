@@ -2,8 +2,6 @@
   <img src="snapclaw-logo.png" alt="SnapClaw" width="300"/>
 </p>
 
-<h1 align="center">SnapClaw</h1>
-
 <p align="center"><em>Your own AI agent on Railway in 5 minutes</em></p>
 
 <p align="center">
