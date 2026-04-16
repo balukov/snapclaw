@@ -34,6 +34,13 @@ RUN apt-get update \
     tini gosu \
   && rm -rf /var/lib/apt/lists/*
 
+# Install Playwright's bundled Chromium for full browser tool support
+# Per OpenClaw docs: must use bundled playwright-core CLI, NOT npx playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
+RUN OPENCLAW_DIR="$(dirname "$(readlink -f "$(which openclaw)")")" \
+  && node "$OPENCLAW_DIR/../node_modules/playwright-core/cli.js" install --with-deps chromium \
+  && chown -R node:node /home/node/.cache
+
 # Install Telegram channel plugin dependencies
 # Install both in openclaw's dir and globally to ensure module resolution works
 RUN OPENCLAW_DIR="$(dirname "$(readlink -f "$(which openclaw)")")" \

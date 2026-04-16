@@ -10,3 +10,4 @@ requiredMountPath = "/data"
 [variables]
 PORT = "8080"
 OPENCLAW_STATE_DIR = "/data/.openclaw"
+PLAYWRIGHT_BROWSERS_PATH = "/home/node/.cache/ms-playwright"

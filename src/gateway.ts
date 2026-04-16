@@ -69,6 +69,7 @@ async function ensureConfig(): Promise<void> {
       headless: true,
       noSandbox: true,
       defaultProfile: "openclaw",
+      snapshotDefaults: { mode: "efficient" },
       extraArgs: [
         "--disable-dev-shm-usage",
         "--disable-gpu",
