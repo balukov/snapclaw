@@ -96,8 +96,8 @@ async function ensureConfig(): Promise<void> {
 
   // The "coding" tools profile doesn't include browser — add it explicitly
   await runCmd("openclaw", [
-    "config", "set", "--json", "tools.allow",
-    JSON.stringify(["browser"]),
+    "config", "set", "--json", "tools",
+    JSON.stringify({ profile: "coding", allow: ["browser"] }),
   ]);
 
   // Trust loopback proxy so Railway-forwarded requests are treated as local
