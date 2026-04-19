@@ -90,7 +90,7 @@ function restoreUI(s: StatusResponse): void {
   if (s.codexConnected) {
     $("codexStart").classList.add("hidden");
     $("codexOauth").classList.add("hidden");
-    const modelLabel = s.model ?? "Connected";
+    const modelLabel = typeof s.model === "string" && s.model ? s.model : "Connected";
     setBadge($("codexStatus"), "success", modelLabel);
     $("codexStep").classList.add("done");
   }
@@ -358,7 +358,9 @@ $("dashRestart").onclick = async () => {
 refreshStatus().then((s) => {
   if (!s) return;
   restoreUI(s);
-  if (s.channelsReady) {
+  // Terminal/admin should be reachable any time the agent is configured,
+  // not only when channels are ready — so the user can diagnose from setup.
+  if (s.configured) {
     showDashboard();
   }
 });

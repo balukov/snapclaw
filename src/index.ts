@@ -119,22 +119,59 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 let channelsReady = false;
 let cachedVersion = "";
 
-async function checkChannelsReady(): Promise<boolean> {
+const CHANNEL_RE = /telegram|discord|whatsapp/i;
+const CHANNELS_READY_FLAG = path.join(STATE_DIR, ".channels-ready");
+
+function markChannelsReady(): void {
+  channelsReady = true;
   try {
-    const cfg = readConfig();
-    const plugins = (cfg as Record<string, unknown>)?.plugins as Record<string, unknown> | undefined;
-    const entries = plugins?.entries as Record<string, unknown> | undefined;
-    if (entries && Object.keys(entries).some(k => ["telegram", "discord", "whatsapp"].includes(k))) {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.writeFileSync(CHANNELS_READY_FLAG, "1");
+  } catch {}
+}
+
+async function checkChannelsReady(): Promise<boolean> {
+  // Persistent flag set on successful pairing (survives restarts)
+  try {
+    if (fs.existsSync(CHANNELS_READY_FLAG)) {
       channelsReady = true;
       return true;
     }
   } catch {}
-  // Fallback: check via CLI
+
+  const cfg = readConfig() ?? {};
+  const plugins = (cfg as Record<string, unknown>).plugins as Record<string, unknown> | undefined;
+  const entries = plugins?.entries as Record<string, unknown> | undefined;
+  if (entries && Object.keys(entries).some((k) => CHANNEL_RE.test(k))) {
+    markChannelsReady();
+    return true;
+  }
+
+  const channels = (cfg as Record<string, unknown>).channels as Record<string, unknown> | undefined;
+  // Telegram: token set AND some extra state (implies pairing persisted something)
+  const tg = channels?.telegram as Record<string, unknown> | undefined;
+  if (tg?.botToken && Object.keys(tg).some((k) => k !== "botToken")) {
+    markChannelsReady();
+    return true;
+  }
+
+  // CLI fallbacks
   try {
     const r = await runCmd("openclaw", ["channels", "list"], 10_000);
-    if (r.code === 0 && r.output.toLowerCase().match(/telegram|discord|whatsapp/)) {
-      channelsReady = true;
+    if (r.code === 0 && CHANNEL_RE.test(r.output)) {
+      markChannelsReady();
       return true;
+    }
+  } catch {}
+  try {
+    const r = await runCmd("openclaw", ["devices", "list", "--json"], 10_000);
+    if (r.code === 0) {
+      const parsed = JSON.parse(r.output);
+      const approved = (parsed.approved ?? parsed.devices ?? []) as unknown[];
+      if (Array.isArray(approved) && approved.length > 0) {
+        markChannelsReady();
+        return true;
+      }
     }
   } catch {}
   return false;
@@ -426,22 +463,23 @@ async function handleRequest(
 
     // API: status
     if (url === "/snapclaw/api/status" && method === "GET") {
-      if (!channelsReady) {
-        // Check config first (fast), only fall back to CLI if needed
-        const cfgCheck = readConfig();
-        const pluginEntries = (cfgCheck?.plugins as Record<string, unknown>)?.entries as Record<string, unknown> | undefined;
-        if (pluginEntries && Object.keys(pluginEntries).some(k => ["telegram", "discord", "whatsapp"].includes(k))) {
-          channelsReady = true;
-        }
-      }
+      if (!channelsReady) await checkChannelsReady();
       const cfg = readConfig();
       const channels = cfg?.channels as Record<string, unknown> | undefined;
       const tg = channels?.telegram as Record<string, unknown> | undefined;
       const botTokenSet = !!(tg?.botToken);
-      // Extract model name from agents.defaults.model
+      // Extract model name from agents.defaults.model (string or object)
       const agents = cfg?.agents as Record<string, unknown> | undefined;
       const defaults = agents?.defaults as Record<string, unknown> | undefined;
-      const model = (defaults?.model as string) ?? null;
+      const rawModel = defaults?.model;
+      let model: string | null = null;
+      if (typeof rawModel === "string") {
+        model = rawModel;
+      } else if (rawModel && typeof rawModel === "object") {
+        const m = rawModel as Record<string, unknown>;
+        const pick = (v: unknown) => (typeof v === "string" ? v : null);
+        model = pick(m.name) ?? pick(m.id) ?? pick(m.model) ?? pick(m.slug) ?? null;
+      }
       // Check if auth credentials exist (not just config file)
       const auth = cfg?.auth as Record<string, unknown> | undefined;
       const profiles = auth?.profiles as Record<string, unknown> | undefined;
@@ -518,7 +556,7 @@ async function handleRequest(
         "config", "set", "channels.telegram.botToken", token,
       ]);
       if (r.code === 0) {
-        channelsReady = true;
+        // Token saved — but not yet paired. Don't set channelsReady here.
         await gateway.restart();
       }
       return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
@@ -659,7 +697,7 @@ async function handleRequest(
       }
       const r = await runCmd("openclaw", ["pairing", "approve", channel, code]);
       if (r.code === 0) {
-        channelsReady = true;
+        markChannelsReady();
       }
       return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
     }
