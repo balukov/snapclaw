@@ -82,9 +82,20 @@ async function ensureConfig(): Promise<void> {
     noSandbox: true,
     defaultProfile: "openclaw",
     snapshotDefaults: { mode: "efficient" },
+    // OpenClaw 2026.4.24+ lazy-launches Chromium on first browser tool use.
+    // Defaults (15s launch + 8s CDP-ready) are tight on Railway's slow-IO
+    // volume mount and constrained CPU; bump generously so cold first-run
+    // doesn't surface as "Timeout. Restart the OpenClaw gateway".
+    localLaunchTimeoutMs: 90000,
+    localCdpReadyTimeoutMs: 30000,
     extraArgs: [
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--disable-setuid-sandbox",
+      "--no-zygote",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
     ],
   };
   if (chromiumPath) browserConfig.executablePath = chromiumPath;

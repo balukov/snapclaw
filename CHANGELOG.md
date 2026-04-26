@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.4
+
+- Fix browser tool timing out with "Restart the OpenClaw gateway" on Railway: OpenClaw 2026.4.24+ lazy-launches Chromium on first use with default budgets `localLaunchTimeoutMs: 15000` and `localCdpReadyTimeoutMs: 8000`. Railway's slow-IO volume mount needs more headroom; bump to 90s/30s
+- Add Chromium launch flags that improve container reliability: `--disable-setuid-sandbox`, `--no-zygote`, `--no-first-run`, `--no-default-browser-check`, `--disable-background-networking`
+
 ## 0.8.3
 
 - Hotfix: gateway crashed with `CIAO ANNOUNCEMENT CANCELLED` unhandled rejection on Railway because the v0.8.2 Bonjour disable lived in `applyPostSetupConfig`, which only runs during fresh onboarding. Move the Bonjour disable (and the optional `OPENCLAW_TELEGRAM_POLL_STALL_MS` env handling) into `gateway.ensureConfig` so they apply on every boot — existing deploys now pick them up on the first restart.
