@@ -144,6 +144,22 @@ async function ensureConfig(): Promise<void> {
     "gateway.remote.token",
     GATEWAY_TOKEN,
   ]);
+
+  // Disable Bonjour: Railway has no LAN to advertise to, and the bundled
+  // Bonjour plugin (default-enabled in OpenClaw 2026.4.24+) crashes the
+  // gateway with "CIAO ANNOUNCEMENT CANCELLED" unhandled rejections when
+  // mDNS multicast fails. Must run on every boot, not just onboarding,
+  // so existing deploys pick up the disable on upgrade.
+  await runCmd("openclaw", [
+    "config", "set", "--json", "plugins.entries.bonjour.enabled", "false",
+  ]);
+
+  const tgPollStallMs = process.env.OPENCLAW_TELEGRAM_POLL_STALL_MS;
+  if (tgPollStallMs && /^\d+$/.test(tgPollStallMs)) {
+    await runCmd("openclaw", [
+      "config", "set", "--json", "channels.telegram.pollingStallThresholdMs", tgPollStallMs,
+    ]);
+  }
 }
 
 export async function start(): Promise<void> {

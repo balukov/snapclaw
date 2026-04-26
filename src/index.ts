@@ -189,17 +189,8 @@ async function applyPostSetupConfig(): Promise<void> {
     "config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]',
   ]);
 
-  // Disable Bonjour: Railway has no LAN to advertise to (openclaw 2026.4.24+)
-  await runCmd("openclaw", [
-    "config", "set", "--json", "plugins.entries.bonjour.enabled", "false",
-  ]);
-
-  const tgPollStallMs = process.env.OPENCLAW_TELEGRAM_POLL_STALL_MS;
-  if (tgPollStallMs && /^\d+$/.test(tgPollStallMs)) {
-    await runCmd("openclaw", [
-      "config", "set", "--json", "channels.telegram.pollingStallThresholdMs", tgPollStallMs,
-    ]);
-  }
+  // (Bonjour disable + telegram poll-stall live in gateway.ensureConfig()
+  // so they apply on every boot, not just first-time onboarding.)
 
   // Allow Control UI connections without device pairing
   await runCmd("openclaw", [
