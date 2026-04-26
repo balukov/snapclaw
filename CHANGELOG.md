@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.5
+
+- Diagnostics for the browser launch issue: log the resolved Chromium binary path on every gateway boot, run `--version` to verify it's executable, and run `openclaw browser doctor` in the background after gateway is ready so the actual launch failure (if any) lands in Railway logs instead of being relayed through the agent as a generic "Restart the OpenClaw gateway" timeout
+- Widen the Chromium binary scan to also match `chromium_headless_shell-*` directories and the `headless_shell` binary, since Playwright bundles the headless shell as a separate distribution
+
 ## 0.8.4
 
 - Fix browser tool timing out with "Restart the OpenClaw gateway" on Railway: OpenClaw 2026.4.24+ lazy-launches Chromium on first use with default budgets `localLaunchTimeoutMs: 15000` and `localCdpReadyTimeoutMs: 8000`. Railway's slow-IO volume mount needs more headroom; bump to 90s/30s

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import {
   STATE_DIR,
@@ -61,20 +61,51 @@ async function ensureConfig(): Promise<void> {
     JSON.stringify([...origins]),
   ]);
 
-  // Enable browser plugin with Playwright's bundled Chromium
+  // Enable browser plugin with Playwright's bundled Chromium.
+  // Scan PLAYWRIGHT_BROWSERS_PATH for the installed Chromium directory.
+  // Playwright >=1.5x ships full chrome under chromium-<rev>/chrome-linux64/,
+  // older revs use chrome-linux/, and a parallel headless-shell distribution
+  // lives under chromium_headless_shell-<rev>/. Try in that order.
   const browsersDir = process.env.PLAYWRIGHT_BROWSERS_PATH || "/home/node/.cache/ms-playwright";
   let chromiumPath: string | undefined;
+  let chromiumScanLog: string;
   try {
-    const chromiumDir = fs.readdirSync(browsersDir).find((d) => d.startsWith("chromium-"));
-    if (chromiumDir) {
-      // Playwright uses chrome-linux64 or chrome-linux depending on version
-      for (const sub of ["chrome-linux64", "chrome-linux"]) {
-        chromiumPath = `${browsersDir}/${chromiumDir}/${sub}/chrome`;
-        if (fs.existsSync(chromiumPath)) break;
-        chromiumPath = undefined;
+    const entries = fs.readdirSync(browsersDir);
+    const chromiumDirs = entries.filter((d) => d.startsWith("chromium-") || d.startsWith("chromium_headless_shell-"));
+    chromiumScanLog = `${browsersDir} entries=${JSON.stringify(entries)}`;
+    for (const dir of chromiumDirs) {
+      for (const [sub, bin] of [
+        ["chrome-linux64", "chrome"],
+        ["chrome-linux", "chrome"],
+        ["chrome-linux", "headless_shell"],
+      ] as const) {
+        const candidate = `${browsersDir}/${dir}/${sub}/${bin}`;
+        if (fs.existsSync(candidate)) { chromiumPath = candidate; break; }
       }
+      if (chromiumPath) break;
     }
-  } catch {}
+  } catch (err) {
+    chromiumScanLog = `${browsersDir} readdir failed: ${(err as Error).message}`;
+  }
+  console.log(`[gateway] chromium scan: ${chromiumScanLog}`);
+  if (chromiumPath) {
+    // Verify the binary is actually executable. If --version exits non-zero,
+    // the launch will fail later with no explanation; surface it now.
+    const probe = spawnSync(chromiumPath, ["--version", "--no-sandbox"], {
+      timeout: 10_000, stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (probe.status === 0) {
+      console.log(`[gateway] chromium ok: ${chromiumPath} (${probe.stdout.toString().trim()})`);
+    } else {
+      console.error(
+        `[gateway] chromium probe FAILED: ${chromiumPath} status=${probe.status} signal=${probe.signal}\n` +
+        `  stderr: ${probe.stderr.toString().trim()}\n` +
+        `  stdout: ${probe.stdout.toString().trim()}`,
+      );
+    }
+  } else {
+    console.error(`[gateway] no Chromium binary found under ${browsersDir} — browser tool will fail`);
+  }
 
   const browserConfig: Record<string, unknown> = {
     enabled: true,
@@ -253,6 +284,27 @@ export async function start(): Promise<void> {
 
   const ready = await waitReady();
   if (!ready) console.warn("[gateway] did not become ready in time");
+
+  // Run browser doctor in the background so the actual launch failure (if any)
+  // surfaces in Railway logs instead of being relayed through the agent as a
+  // generic "Restart the OpenClaw gateway" timeout. Don't block startup.
+  void (async () => {
+    try {
+      const r = await runCmd(
+        "openclaw",
+        ["browser", "--browser-profile", "openclaw", "doctor"],
+        120_000,
+      );
+      const out = r.output.trim();
+      if (r.code === 0) {
+        console.log(`[gateway] browser doctor ok:\n${out}`);
+      } else {
+        console.error(`[gateway] browser doctor FAILED (code=${r.code}):\n${out}`);
+      }
+    } catch (err) {
+      console.error(`[gateway] browser doctor errored: ${(err as Error).message}`);
+    }
+  })();
 }
 
 export async function stop(): Promise<void> {
