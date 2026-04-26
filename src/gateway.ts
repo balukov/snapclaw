@@ -204,12 +204,43 @@ async function ensureConfig(): Promise<void> {
   }
 }
 
+function clearStaleBrowserLocks(): void {
+  // OpenClaw stores Chromium user-data dirs at:
+  //   $OPENCLAW_STATE_DIR/browser/<profile>/user-data/Singleton{Lock,Cookie,Socket}
+  // On Railway every redeploy is a fresh container with a new PID space, but
+  // the persistent volume keeps old Singleton* files pointing at PIDs that
+  // no longer exist. Chromium then sits in retry/timeout limbo on first
+  // launch. OpenClaw 2026.4.24 has stale-lock recovery, but it kicks in
+  // only after the first attempt times out — past the agent's tool budget.
+  // Clear them here so the first launch is clean.
+  const browserRoot = `${STATE_DIR}/browser`;
+  let cleared = 0;
+  try {
+    for (const profile of fs.readdirSync(browserRoot)) {
+      const userDataDir = `${browserRoot}/${profile}/user-data`;
+      for (const basename of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+        const p = `${userDataDir}/${basename}`;
+        try {
+          fs.rmSync(p, { force: true });
+          if (fs.existsSync(p) === false) cleared++;
+        } catch {}
+      }
+    }
+  } catch {
+    // browserRoot doesn't exist yet (fresh deploy) — nothing to clear
+    return;
+  }
+  if (cleared > 0) console.log(`[gateway] cleared ${cleared} stale Chromium Singleton lock(s)`);
+}
+
 export async function start(): Promise<void> {
   if (isRunning()) return;
   if (!isConfigured()) throw new Error("Not configured");
 
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+
+  clearStaleBrowserLocks();
 
   // Stop any leftover gateway process before starting
   await runCmd("openclaw", ["gateway", "stop"]);
