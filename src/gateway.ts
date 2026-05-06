@@ -139,9 +139,14 @@ async function ensureConfig(): Promise<void> {
   // Use the `full` profile: unrestricted tool access. SnapClaw is a
   // single-operator personal agent, and the narrower profiles (coding,
   // messaging) each omit tools we need (coding lacks browser+message;
-  // messaging lacks fs+runtime). Clear alsoAllow so it doesn't linger
-  // from previous configs.
+  // messaging lacks fs+runtime). Clear `allow` AND `alsoAllow` so leftover
+  // values from prior configs don't override the profile — `tools.allow`
+  // replaces the profile's list entirely (per OpenClaw docs), so a
+  // lingering `["browser"]` would silently strip fs/exec/message tools.
   await runCmd("openclaw", ["config", "set", "tools.profile", "full"]);
+  await runCmd("openclaw", [
+    "config", "set", "--json", "tools.allow", JSON.stringify([]),
+  ]);
   await runCmd("openclaw", [
     "config", "set", "--json", "tools.alsoAllow", JSON.stringify([]),
   ]);

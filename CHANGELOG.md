@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.7
+
+- Fix agents losing all tools except `browser` after upgrade: `tools.allow` *replaces* the profile's tool list (per OpenClaw docs), so any leftover entry like `["browser"]` from a prior config silently strips fs/exec/message/memory tools — agents then can't edit files, run commands, or write long-term memory, and report things like "no file editing tool available". Reset `tools.allow` to `[]` on every gateway boot alongside the existing `tools.alsoAllow` reset, so the `full` profile is always the effective tool set.
+
 ## 0.8.6
 
 - Fix browser tool timing out on first use after Railway redeploys: Chromium's `SingletonLock`, `SingletonCookie`, and `SingletonSocket` files in the persisted browser profile dir referenced PIDs from the previous container, so the first launch attempt sat in retry/timeout limbo. OpenClaw's built-in stale-lock recovery kicks in only after the first attempt times out — too late for the agent's tool-call budget. Pre-clear the lock files at gateway boot so the first launch is clean.
