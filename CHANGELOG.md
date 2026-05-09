@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+- Setup UI design system refresh: replaced the ad-hoc inline CSS in `setup.html` with a token-driven design system in a new `public/setup.css` (color, type scale, 4px spacing scale, three radii, motion, elevation). Tightened the existing aesthetic without changing the orange-on-dark brand identity — no React, no Tailwind, no new dependencies.
+- Concrete fixes: removed the gradient text on the page heading; softened the background grid pattern; replaced the lift-on-hover button transform with a calmer color/shadow shift; demoted the oversized "Open Web UI" hero to a regular dashboard button; bumped `<pre>` and `<code>` to a dedicated `--surface-2` for clearer hierarchy; added a real checkmark glyph to the "done" step state instead of just swapping the circle color; switched all focus rings to `:focus-visible`; tightened entrance animations from .6s/.4s to 250ms.
+- Refreshed the login page (`sendLoginPage` in `src/index.ts`) to use the same token vocabulary, so login → setup is visually cohesive.
+- Preserved every CSS class that `src/client/setup.ts` toggles as part of the setup state machine (`.hidden`, `.configured`, `.done`, `.status-badge.success`, `.status-badge.pending`) — this is purely a CSS change with zero behavior impact.
+- New static-asset route `GET /snapclaw/setup.css` mirroring the existing `setup.js` route, served behind the same auth gate.
+
 ## 0.8.7
 
 - Fix agents losing all tools except `browser` after upgrade: `tools.allow` *replaces* the profile's tool list (per OpenClaw docs), so any leftover entry like `["browser"]` from a prior config silently strips fs/exec/message/memory tools — agents then can't edit files, run commands, or write long-term memory, and report things like "no file editing tool available". Reset `tools.allow` to `[]` on every gateway boot alongside the existing `tools.alsoAllow` reset, so the `full` profile is always the effective tool set.

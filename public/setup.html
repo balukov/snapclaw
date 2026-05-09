@@ -7,88 +7,7 @@
   <link rel="icon" type="image/png" href="/snapclaw-icon.png" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --border: #2a2d3a;
-      --accent: #e85d3a;
-      --accent-glow: rgba(232,93,58,0.15);
-      --text: #e8e6e3;
-      --muted: #8b8a88;
-      --success: #34d399;
-      --success-bg: rgba(52,211,153,0.1);
-      --r: 14px;
-    }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
-    body::before { content:''; position:fixed; inset:0; background-image:linear-gradient(rgba(232,93,58,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(232,93,58,0.03) 1px,transparent 1px); background-size:60px 60px; pointer-events:none; }
-    .container { max-width:720px; margin:0 auto; padding:2rem 1.5rem 4rem; position:relative; z-index:1; }
-
-    .header { display:flex; align-items:center; gap:1rem; margin-bottom:2rem; animation:fadeDown .6s ease; }
-    .header img { width:64px; height:64px; border-radius:16px; filter:drop-shadow(0 4px 12px rgba(232,93,58,0.3)); }
-    .header h1 { font-size:1.6rem; font-weight:700; letter-spacing:-0.02em; background:linear-gradient(135deg,var(--text),var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-    .header p { color:var(--muted); font-size:.85rem; margin-top:.15rem; }
-
-    #statusBar { background:var(--surface); border:1px solid var(--border); padding:.6rem 1rem; border-radius:10px; margin-bottom:1.75rem; font-size:.82rem; font-family:'JetBrains Mono',monospace; display:flex; align-items:center; gap:.5rem; animation:fadeDown .6s ease .1s both; }
-    #statusBar::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
-    #statusBar.configured::before { background:var(--success); box-shadow:0 0 8px rgba(52,211,153,.5); }
-
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1.5rem; margin-bottom:1.25rem; animation:fadeUp .4s ease; }
-    .card h2 { font-size:1.15rem; font-weight:700; margin-bottom:.35rem; }
-    .card h3 { font-size:.95rem; font-weight:600; margin-top:1.25rem; margin-bottom:.25rem; }
-    .muted { color:var(--muted); font-size:.88rem; line-height:1.5; }
-    .muted a { color:var(--accent); text-decoration:none; }
-    .muted a:hover { text-decoration:underline; }
-
-    label { display:block; margin-top:.75rem; font-weight:600; font-size:.85rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
-    input { width:100%; padding:.65rem .85rem; margin-top:.3rem; border:1px solid var(--border); border-radius:10px; font-size:.9rem; font-family:'JetBrains Mono',monospace; background:var(--bg); color:var(--text); transition:border-color .2s; }
-    input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
-    input::placeholder { color:#555; }
-
-    button { padding:.7rem 1.6rem; border-radius:10px; border:0; background:var(--accent); color:#fff; font-weight:700; font-size:.9rem; font-family:'DM Sans',sans-serif; cursor:pointer; transition:all .2s; }
-    button:hover { filter:brightness(1.1); transform:translateY(-1px); box-shadow:0 4px 16px rgba(232,93,58,.3); }
-    button:active { transform:translateY(0); }
-    button:disabled { opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; filter:none; }
-    .btn-secondary { background:var(--surface); color:var(--muted); border:1px solid var(--border); }
-    .btn-secondary:hover { background:#22252f; color:var(--text); box-shadow:none; }
-
-    .url-row { display:flex; gap:.5rem; align-items:center; margin-top:.5rem; }
-    .url-row input { flex:1; }
-    .url-row button { flex-shrink:0; padding:.65rem 1rem; }
-
-    .status-badge { display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .75rem; border-radius:8px; font-size:.8rem; font-weight:600; margin-top:.75rem; }
-    .status-badge.success { background:var(--success-bg); color:var(--success); border:1px solid rgba(52,211,153,.3); }
-    .status-badge.pending { background:var(--accent-glow); color:var(--accent); border:1px solid rgba(232,93,58,.3); }
-
-    pre { white-space:pre-wrap; word-break:break-word; background:var(--bg); border:1px solid var(--border); color:var(--muted); padding:.75rem; border-radius:10px; font-size:.8rem; font-family:'JetBrains Mono',monospace; max-height:200px; overflow-y:auto; margin-top:.5rem; }
-    code { background:var(--bg); border:1px solid var(--border); padding:.15rem .45rem; border-radius:6px; font-size:.82em; font-family:'JetBrains Mono',monospace; color:var(--accent); }
-
-    .btn-row { display:flex; gap:.5rem; margin-top:1.25rem; }
-
-    .done-link { display:inline-block; padding:.85rem 2.5rem; background:var(--accent); color:#fff; border-radius:12px; text-decoration:none; font-weight:700; font-size:1rem; font-family:'DM Sans',sans-serif; transition:all .2s; margin-top:1.5rem; }
-    .done-link:hover { filter:brightness(1.1); transform:translateY(-2px); box-shadow:0 6px 20px rgba(232,93,58,.35); }
-
-    ol.steps { padding-left:1.25rem; margin:.5rem 0; }
-    ol.steps li { color:var(--muted); font-size:.88rem; line-height:1.8; }
-    ol.steps a { color:var(--accent); text-decoration:none; }
-    ol.steps a:hover { text-decoration:underline; }
-
-    .hidden { display:none !important; }
-
-    /* Dashboard */
-    .term-controls { display:flex; gap:.5rem; margin-bottom:.75rem; flex-wrap:wrap; }
-    .step-header { display:flex; align-items:flex-start; gap:.75rem; }
-    .step-number { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; font-weight:700; font-size:.85rem; flex-shrink:0; margin-top:.1rem; }
-    .step-number.done { background:var(--success); }
-    #dashTerminalContainer { border-radius:12px; overflow:hidden; background:#0c0e14; border:1px solid var(--border); }
-    #dashTerminal { padding:6px; }
-    .spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin .6s linear infinite; vertical-align:middle; margin-right:6px; }
-    @keyframes spin { to { transform:rotate(360deg) } }
-    @keyframes fadeDown { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-    @media(max-width:500px) { .container{padding:1.25rem 1rem 3rem} .header img{width:48px;height:48px} }
-  </style>
+  <link rel="stylesheet" href="/snapclaw/setup.css" />
 </head>
 <body>
 <div class="container">
@@ -118,7 +37,7 @@
       </div>
       <div id="codexStatus"></div>
 
-      <div id="codexStart" style="margin-top:.75rem">
+      <div id="codexStart" class="btn-row">
         <button id="codexStartBtn">Connect</button>
       </div>
 
@@ -167,10 +86,10 @@
       </div>
 
       <div id="telegramPairing" class="hidden">
-        <p class="muted" style="margin-top:.75rem">Send any message to your bot in Telegram to get a pairing code.</p>
+        <p class="muted">Send any message to your bot in Telegram to get a pairing code.</p>
         <label>Pairing code</label>
         <div class="url-row">
-          <input id="telegramPairingCode" placeholder="ABCD1234" style="text-transform:uppercase" />
+          <input id="telegramPairingCode" class="input-uppercase" placeholder="ABCD1234" />
           <button id="telegramApproveBtn">Approve</button>
         </div>
       </div>
@@ -190,10 +109,10 @@
           <p class="muted">Your agent is running. Message your Telegram bot or use the Web UI to start chatting.</p>
         </div>
       </div>
-      <div style="display:flex; gap:.75rem; margin-top:1.25rem; flex-wrap:wrap;">
-        <a href="/" target="_blank" class="done-link" style="margin:0; font-size:.9rem; padding:.7rem 1.6rem;">Open Web UI</a>
+      <div class="btn-row">
+        <a href="/" target="_blank" class="btn">Open Web UI</a>
       </div>
-      <h3 style="font-size:.85rem; color:var(--muted); margin-top:1.5rem; margin-bottom:.5rem;">Admin</h3>
+      <h3>Admin</h3>
       <div class="term-controls">
         <button id="dashShell" class="btn-secondary">Terminal</button>
         <button id="dashRestart" class="btn-secondary">Restart gateway</button>

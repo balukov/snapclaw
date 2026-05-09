@@ -54,23 +54,29 @@ function checkAuth(req: http.IncomingMessage): boolean {
 }
 
 function sendLoginPage(res: http.ServerResponse, error = ""): void {
-  const errorHtml = error ? `<p style="color:var(--accent);margin-bottom:1rem;font-size:.9rem">${error}</p>` : "";
+  const errorHtml = error ? `<p class="error">${error}</p>` : "";
   const html = `<!doctype html>
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SnapClaw</title>
+<link rel="icon" type="image/png" href="/snapclaw-icon.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;--accent:#e85d3a;--accent-glow:rgba(232,93,58,0.15);--text:#e8e6e3;--muted:#8b8a88;--r:14px}
+:root{--bg:#0f1117;--surface-1:#1a1d27;--surface-2:#14171f;--border:#2a2d3a;--border-strong:#3a3d4a;--text:#e8e6e3;--text-muted:#8b8a88;--text-faint:#5a5a58;--accent:#e85d3a;--accent-hover:#ed6e4d;--accent-fg:#fff;--accent-glow:rgba(232,93,58,0.18);--radius-sm:8px;--radius-lg:16px;--font-sans:'DM Sans',system-ui,sans-serif;--font-mono:'JetBrains Mono',ui-monospace,monospace;--ease:cubic-bezier(0.16,1,0.3,1)}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:2rem;width:100%;max-width:360px;margin:1rem}
-h1{font-size:1.4rem;font-weight:700;margin-bottom:.25rem;background:linear-gradient(135deg,var(--text),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-p{color:var(--muted);font-size:.85rem;margin-bottom:1.25rem}
-input{width:100%;padding:.7rem .85rem;border:1px solid var(--border);border-radius:10px;font-size:.95rem;font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--text);margin-bottom:1rem}
-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
-button{width:100%;padding:.75rem;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:700;font-size:.95rem;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s}
-button:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 4px 16px rgba(232,93,58,.3)}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(232,93,58,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(232,93,58,0.015) 1px,transparent 1px);background-size:96px 96px;pointer-events:none;z-index:0}
+.card{position:relative;z-index:1;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;width:100%;max-width:360px;margin:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.04),0 1px 2px rgba(0,0,0,0.4)}
+h1{font-size:1.4rem;font-weight:700;letter-spacing:-0.02em;color:var(--text);margin-bottom:4px}
+p{color:var(--text-muted);font-size:.85rem;margin-bottom:20px;line-height:1.5}
+.error{color:var(--accent);font-size:.85rem;margin-bottom:16px}
+input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.85rem;font-family:var(--font-mono);background:var(--surface-2);color:var(--text);margin-bottom:12px;transition:border-color 150ms var(--ease),box-shadow 150ms var(--ease)}
+input::placeholder{color:var(--text-faint)}
+input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+button{width:100%;padding:10px;border-radius:var(--radius-sm);border:1px solid transparent;background:var(--accent);color:var(--accent-fg);font-weight:700;font-size:.85rem;font-family:var(--font-sans);cursor:pointer;transition:background-color 150ms var(--ease),box-shadow 150ms var(--ease)}
+button:hover{background:var(--accent-hover);box-shadow:0 2px 8px rgba(232,93,58,.18)}
+button:active{filter:brightness(0.95)}
+button:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-glow)}
 </style></head><body>
 <form class="card" method="POST" action="/snapclaw/login">
 <h1>SnapClaw</h1>
@@ -469,6 +475,11 @@ async function handleRequest(
     // Frontend JS
     if (url === "/snapclaw/setup.js" && method === "GET") {
       return sendFile(res, path.join(publicDir, "setup.js"), "application/javascript");
+    }
+
+    // Frontend CSS
+    if (url === "/snapclaw/setup.css" && method === "GET") {
+      return sendFile(res, path.join(publicDir, "setup.css"), "text/css");
     }
 
     // API: status
