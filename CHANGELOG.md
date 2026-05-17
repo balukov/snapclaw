@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1
+
+- Bump the example `OPENCLAW_VERSION` in `docker-compose.yml` to `2026.5.12` (latest stable). Docs-only — the `Dockerfile` still tracks `ghcr.io/openclaw/openclaw:latest`, so Railway deployments already pick up new OpenClaw releases on rebuild.
+
 ## 0.9.0
 
 - Setup UI design system refresh: replaced the ad-hoc inline CSS in `setup.html` with a token-driven design system in a new `public/setup.css` (color, type scale, 4px spacing scale, three radii, motion, elevation). Tightened the existing aesthetic without changing the orange-on-dark brand identity — no React, no Tailwind, no new dependencies.
