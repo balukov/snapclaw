@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.6
+
+- **Critical regression fix**: v0.9.2 set `plugins.allow = ["codex"]` to silence a startup warning, but OpenClaw treats `plugins.allow` as an **exclusive allowlist** (only listed plugins are permitted to load) rather than a non-bundled trust list. The effect: every bundled plugin — telegram, browser, memory-core, canvas, file-transfer, device-pair, phone-control, talk-voice — was being blocked. Users who installed SnapClaw fresh on v0.9.2 through v0.9.5 would see Codex auth complete, save a Telegram bot token, then message the bot and get no response, because the telegram plugin never started polling. Reset `plugins.allow` to `[]` on every boot — actively, so existing deployments that picked up the bad config self-heal on next restart.
+
 ## 0.9.5
 
 - Fix the setup UI showing **Step 3: "You're all set!"** in green as soon as Codex OAuth finished, before Telegram was paired. The dashboard div (which contains the success block) was unconditionally shown whenever `configured=true`, on the assumption that admin/terminal access should be reachable during incomplete setup. Kept that intent — the admin section still appears as soon as the agent is configured — but moved the "You're all set!" header + "Open Web UI" button into a new `#dashboardReady` wrapper that is only revealed when `channelsReady=true`. Pairs with v0.9.4's tightened pairing detection: now the green checkmark only appears when the user has actually completed Telegram pairing.

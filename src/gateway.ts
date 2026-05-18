@@ -194,12 +194,15 @@ async function ensureConfig(): Promise<void> {
     GATEWAY_TOKEN,
   ]);
 
-  // Explicitly trust the codex plugin so OpenClaw stops emitting the
-  // "plugins.allow is empty; discovered non-bundled plugins may auto-load:
-  // codex" warning on every boot and every inbound message. SnapClaw
-  // installs codex deliberately during onboarding, so trusting it is safe.
+  // plugins.allow MUST stay empty. v0.9.2 set this to `["codex"]` to silence
+  // a "plugins.allow is empty; non-bundled plugins may auto-load" warning,
+  // but OpenClaw treats plugins.allow as an exclusive allowlist — setting it
+  // to `["codex"]` blocked every bundled plugin including telegram, browser,
+  // memory-core, etc. The bot stopped polling Telegram entirely, so messages
+  // to the bot silently disappeared. Reset to [] on every boot so existing
+  // deployments that picked up the bad config self-heal on the next restart.
   await runCmd("openclaw", [
-    "config", "set", "--json", "plugins.allow", JSON.stringify(["codex"]),
+    "config", "set", "--json", "plugins.allow", JSON.stringify([]),
   ]);
 
   // Disable Bonjour: Railway has no LAN to advertise to, and the bundled
