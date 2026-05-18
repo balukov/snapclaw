@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4
+
+- Fix false-positive "Telegram bot is connected" state on fresh installs. After saving a bot token, `checkChannelsReady()` was returning true via two over-eager heuristics: (1) `plugins.entries.<channel>` matches as soon as OpenClaw registers the telegram plugin, before any pairing handshake; (2) `openclaw channels list` mentions the channel name as soon as the bot token is configured. Both fire while the user has never even messaged the bot. Worse, the false state was then persisted to `/data/.openclaw/.channels-ready`, so refreshing the setup UI kept reporting "connected" forever even though the bot had never responded with a pairing code. Replaced both with strict pairing signals: an approved device in `openclaw devices list`, or a non-empty `commands.ownerAllowFrom` — neither of which gets populated just by writing a bot token.
+
 ## 0.9.3
 
 - Fix `HTTP 400: {"ok":false,"error":"No active session"}` during fresh Codex OAuth setup. The PTY-backed onboarding session was being auto-killed after 5 minutes, but ChatGPT OAuth (sign-in + 2FA + approve + copy redirect URL) regularly takes longer on first-time setup — so the session was already dead by the time the user pasted the redirect URL. Bump the auto-cleanup to 30 minutes so the in-flight onboard process survives the full OAuth window.

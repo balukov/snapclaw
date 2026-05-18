@@ -137,7 +137,9 @@ function markChannelsReady(): void {
 }
 
 async function checkChannelsReady(): Promise<boolean> {
-  // Persistent flag set on successful pairing (survives restarts)
+  // Persistent flag set on successful pairing (survives restarts). Once
+  // written we trust it — only written below when a real pairing signal
+  // is observed.
   try {
     if (fs.existsSync(CHANNELS_READY_FLAG)) {
       channelsReady = true;
@@ -145,30 +147,9 @@ async function checkChannelsReady(): Promise<boolean> {
     }
   } catch {}
 
-  const cfg = readConfig() ?? {};
-  const plugins = (cfg as Record<string, unknown>).plugins as Record<string, unknown> | undefined;
-  const entries = plugins?.entries as Record<string, unknown> | undefined;
-  if (entries && Object.keys(entries).some((k) => CHANNEL_RE.test(k))) {
-    markChannelsReady();
-    return true;
-  }
-
-  const channels = (cfg as Record<string, unknown>).channels as Record<string, unknown> | undefined;
-  // Telegram: token set AND some extra state (implies pairing persisted something)
-  const tg = channels?.telegram as Record<string, unknown> | undefined;
-  if (tg?.botToken && Object.keys(tg).some((k) => k !== "botToken")) {
-    markChannelsReady();
-    return true;
-  }
-
-  // CLI fallbacks
-  try {
-    const r = await runCmd("openclaw", ["channels", "list"], 10_000);
-    if (r.code === 0 && CHANNEL_RE.test(r.output)) {
-      markChannelsReady();
-      return true;
-    }
-  } catch {}
+  // Real pairing signal #1: a device was approved. The pairing handshake
+  // (user sends /start to the bot, bot responds with a code, user enters
+  // the code in setup) ends with an approved device entry.
   try {
     const r = await runCmd("openclaw", ["devices", "list", "--json"], 10_000);
     if (r.code === 0) {
@@ -180,6 +161,26 @@ async function checkChannelsReady(): Promise<boolean> {
       }
     }
   } catch {}
+
+  // Real pairing signal #2: an operator account is bound via
+  // commands.ownerAllowFrom. Set during pairing when a Telegram user is
+  // promoted to operator. Does NOT get populated just by writing a bot
+  // token — so this is a trustworthy signal.
+  const cfg = readConfig() ?? {};
+  const commands = (cfg as Record<string, unknown>).commands as Record<string, unknown> | undefined;
+  const ownerAllowFrom = commands?.ownerAllowFrom;
+  if (Array.isArray(ownerAllowFrom) && ownerAllowFrom.length > 0) {
+    markChannelsReady();
+    return true;
+  }
+
+  // NOTE: the previous heuristics (plugins.entries.<channel> exists,
+  // channels.telegram has extra keys beyond botToken, `openclaw channels
+  // list` mentions a channel name) were all false positives — they fire
+  // as soon as a bot token is configured, before the user has ever
+  // messaged the bot. They made the setup UI report "Telegram bot is
+  // connected" while the user had received no pairing code, and the
+  // false state then persisted via CHANNELS_READY_FLAG. Removed.
   return false;
 }
 
