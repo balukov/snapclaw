@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.3
+
+- Fix `HTTP 400: {"ok":false,"error":"No active session"}` during fresh Codex OAuth setup. The PTY-backed onboarding session was being auto-killed after 5 minutes, but ChatGPT OAuth (sign-in + 2FA + approve + copy redirect URL) regularly takes longer on first-time setup — so the session was already dead by the time the user pasted the redirect URL. Bump the auto-cleanup to 30 minutes so the in-flight onboard process survives the full OAuth window.
+- Improve the callback error message from the cryptic "No active session" to "Codex onboarding session expired or not started. Click 'Start Codex OAuth' to begin a new one." — so the next user who does hit the timeout knows the recovery action.
+
 ## 0.9.2
 
 - **Persistent agent memory across redeploys.** OpenClaw's `memory-core` plugin writes daily memory markdowns to `$HOME/.openclaw/workspace/memory/` regardless of `OPENCLAW_STATE_DIR`. On Railway, `$HOME` (`/home/node`) is the ephemeral container layer, so the agent's long-term memory was being silently wiped on every redeploy for every SnapClaw user. Fix: pre-create `~/.openclaw` as a symlink to `STATE_DIR` before gateway boot, so any fallback writes land on the persistent volume. Idempotent on every boot; existing real `~/.openclaw` directories are moved aside (`.ephemeral.<ts>`) and replaced with the symlink — accept the one-time loss of writes that were already destined to evaporate.

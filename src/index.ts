@@ -344,13 +344,16 @@ function startCodexSession(): CodexSession {
 
   codexSession = session;
 
-  // Auto-cleanup after 5 min
+  // Auto-cleanup after 30 min. ChatGPT OAuth (sign-in + 2FA + approve +
+  // copy redirect URL) regularly takes more than 5 minutes on first-time
+  // setup; killing the PTY mid-flow leaves users with a confusing
+  // "No active session" error when they paste the redirect.
   setTimeout(() => {
     if (codexSession === session) {
       try { shell.kill(); } catch {}
       codexSession = null;
     }
-  }, 300_000);
+  }, 1_800_000);
 
   return session;
 }
@@ -546,7 +549,12 @@ async function handleRequest(
       const body = await readJson(req);
       const redirectUrl = String(body.redirectUrl ?? "").trim();
       if (!redirectUrl) return sendJson(res, { ok: false, error: "Missing redirectUrl" }, 400);
-      if (!codexSession?.pty) return sendJson(res, { ok: false, error: "No active session" }, 400);
+      if (!codexSession?.pty) {
+        return sendJson(res, {
+          ok: false,
+          error: "Codex onboarding session expired or not started. Click \"Start Codex OAuth\" to begin a new one.",
+        }, 400);
+      }
 
       codexSession.pty.write(redirectUrl + "\r");
 
