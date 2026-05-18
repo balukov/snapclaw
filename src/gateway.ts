@@ -1,5 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   STATE_DIR,
   WORKSPACE_DIR,
@@ -192,6 +194,14 @@ async function ensureConfig(): Promise<void> {
     GATEWAY_TOKEN,
   ]);
 
+  // Explicitly trust the codex plugin so OpenClaw stops emitting the
+  // "plugins.allow is empty; discovered non-bundled plugins may auto-load:
+  // codex" warning on every boot and every inbound message. SnapClaw
+  // installs codex deliberately during onboarding, so trusting it is safe.
+  await runCmd("openclaw", [
+    "config", "set", "--json", "plugins.allow", JSON.stringify(["codex"]),
+  ]);
+
   // Disable Bonjour: Railway has no LAN to advertise to, and the bundled
   // Bonjour plugin (default-enabled in OpenClaw 2026.4.24+) crashes the
   // gateway with "CIAO ANNOUNCEMENT CANCELLED" unhandled rejections when
@@ -206,6 +216,39 @@ async function ensureConfig(): Promise<void> {
     await runCmd("openclaw", [
       "config", "set", "--json", "channels.telegram.pollingStallThresholdMs", tgPollStallMs,
     ]);
+  }
+}
+
+function ensureHomeStateLink(): void {
+  // OpenClaw's memory-core plugin (and likely other components) write to
+  // `~/.openclaw/workspace/memory/<date>.md` regardless of OPENCLAW_STATE_DIR.
+  // On Railway, $HOME (/home/node) is the ephemeral container layer, so those
+  // writes vanish on every redeploy — silently eating the agent's long-term
+  // memory. Force the fallback path onto the persistent volume by making
+  // ~/.openclaw a symlink to STATE_DIR.
+  const homeOpenclaw = path.join(os.homedir(), ".openclaw");
+  try {
+    const st = fs.lstatSync(homeOpenclaw);
+    if (st.isSymbolicLink()) {
+      // Already a symlink — verify target and re-create if it points elsewhere
+      try {
+        if (fs.readlinkSync(homeOpenclaw) === STATE_DIR) return;
+      } catch {}
+      fs.unlinkSync(homeOpenclaw);
+    } else {
+      // Real directory: move aside. Existing entries here were ephemeral and
+      // would have been lost on next redeploy anyway, but keep a backup just
+      // in case the operator wants to inspect what was there.
+      fs.renameSync(homeOpenclaw, `${homeOpenclaw}.ephemeral.${Date.now()}`);
+    }
+  } catch {
+    // ENOENT — fresh container, nothing to move aside
+  }
+  try {
+    fs.symlinkSync(STATE_DIR, homeOpenclaw, "dir");
+    console.log(`[gateway] linked ~/.openclaw → ${STATE_DIR} (persistent memory)`);
+  } catch (err) {
+    console.warn(`[gateway] failed to link ~/.openclaw: ${(err as Error).message}`);
   }
 }
 
@@ -245,6 +288,7 @@ export async function start(): Promise<void> {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
+  ensureHomeStateLink();
   clearStaleBrowserLocks();
 
   // Stop any leftover gateway process before starting
@@ -274,7 +318,12 @@ export async function start(): Promise<void> {
   } catch (err) {
     console.warn("[gateway] config auto-fix failed:", err);
   }
-  await runCmd("openclaw", ["doctor", "--fix"]);
+  // Intentionally do NOT run `openclaw doctor --fix` on every boot. It's an
+  // unbounded auto-repair pass: OpenClaw 2026.5.5 doctor rewrote valid
+  // `openai-codex/*` OAuth routes to `openai/*` (reverted in 5.6), and
+  // similar destructive migrations are a recurring risk. Run it manually
+  // (`openclaw doctor --fix`) when something is actually broken. The
+  // targeted config writes in ensureConfig() below cover SnapClaw's needs.
 
   await ensureConfig();
 

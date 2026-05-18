@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2
+
+- **Persistent agent memory across redeploys.** OpenClaw's `memory-core` plugin writes daily memory markdowns to `$HOME/.openclaw/workspace/memory/` regardless of `OPENCLAW_STATE_DIR`. On Railway, `$HOME` (`/home/node`) is the ephemeral container layer, so the agent's long-term memory was being silently wiped on every redeploy for every SnapClaw user. Fix: pre-create `~/.openclaw` as a symlink to `STATE_DIR` before gateway boot, so any fallback writes land on the persistent volume. Idempotent on every boot; existing real `~/.openclaw` directories are moved aside (`.ephemeral.<ts>`) and replaced with the symlink — accept the one-time loss of writes that were already destined to evaporate.
+- Stop running `openclaw doctor --fix` on every gateway boot. It's an unbounded auto-repair pass and has a track record of destructive migrations across OpenClaw releases (2026.5.5 doctor rewrote valid `openai-codex/*` OAuth routes, reverted in 5.6). SnapClaw's own `ensureConfig()` covers the targeted config writes we actually need; run `openclaw doctor --fix` manually when something is genuinely broken.
+- Set `plugins.allow = ["codex"]` in `ensureConfig()` to silence the "plugins.allow is empty; discovered non-bundled plugins may auto-load: codex" warning that previously fired on every boot and on every inbound Telegram message. SnapClaw installs codex deliberately during onboarding, so explicit-trusting it is the correct posture.
+
 ## 0.9.1
 
 - Bump the example `OPENCLAW_VERSION` in `docker-compose.yml` to `2026.5.12` (latest stable). Docs-only — the `Dockerfile` still tracks `ghcr.io/openclaw/openclaw:latest`, so Railway deployments already pick up new OpenClaw releases on rebuild.
