@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.9
+
+- **Re-authenticate no longer wipes the whole config.** v0.9.8 wired the "Re-authenticate" link to `startCodexSession()`, which deletes `openclaw.json` before running `openclaw onboard` — so a user clicking it lost their Telegram bot token, pairing state, and any other settings. After that, the gateway booted with only 3 plugins (no telegram), and the bot effectively disappeared from polling. Now: if a config already exists, re-auth runs `openclaw models auth login --provider openai-codex` instead — narrow, OAuth-only, leaves everything else intact. (This is exactly what OpenClaw's own "Model login expired" error tells users to run.) First-time onboarding still uses the full `openclaw onboard` flow with the config wipe.
+- **Self-heal the `.channels-ready` flag.** When the v0.9.8 re-auth wiped the config, the persistent `.channels-ready` file on the volume was left in place — so `checkChannelsReady()` kept returning `true` and the setup UI hid the "add bot token" input, leaving the user with no UI path to recover. `checkChannelsReady()` now sanity-checks against `channels.telegram.botToken`: if the flag is set but the bot token is gone, the flag is stale and gets cleared. Existing broken deployments will self-heal on the next status poll after upgrading.
+
 ## 0.9.8
 
 - Add a "Re-authenticate" link under Step 1 when Codex shows as connected. The `codexConnected` status only checks that an `auth.profiles` entry exists in the config — it can't tell whether the underlying OAuth tokens still work. When OpenClaw later returns "Model login expired on the gateway for openai-codex" (e.g. after the v0.9.6 redeploy nuked `~/.codex`), users had no way to re-trigger OAuth from the UI without going through `/reset` and rerunning the whole onboarding wizard. The new link reveals the connect UI and calls the existing `/snapclaw/api/codex/start` flow, which already kills any prior session before starting a fresh one.

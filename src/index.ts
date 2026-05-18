@@ -137,13 +137,27 @@ function markChannelsReady(): void {
 }
 
 async function checkChannelsReady(): Promise<boolean> {
-  // Persistent flag set on successful pairing (survives restarts). Once
-  // written we trust it — only written below when a real pairing signal
-  // is observed.
+  const cfg = readConfig() ?? {};
+  const channels = (cfg as Record<string, unknown>).channels as Record<string, unknown> | undefined;
+  const tg = channels?.telegram as Record<string, unknown> | undefined;
+  const hasBotToken = !!(tg?.botToken);
+
+  // Persistent flag set on successful pairing (survives restarts).
+  // Self-heal: if the flag is stale (set when telegram was configured,
+  // but the config has since been wiped — e.g. by a v0.9.8 re-auth that
+  // rewrote openclaw.json from scratch), clear it so the UI exposes the
+  // "add bot token" step again. Without this, an existing deployment
+  // that lost its telegram config is unrecoverable through the UI.
   try {
     if (fs.existsSync(CHANNELS_READY_FLAG)) {
-      channelsReady = true;
-      return true;
+      if (!hasBotToken) {
+        console.log("[snapclaw] stale .channels-ready flag (no bot token in config); clearing");
+        try { fs.unlinkSync(CHANNELS_READY_FLAG); } catch {}
+        channelsReady = false;
+      } else {
+        channelsReady = true;
+        return true;
+      }
     }
   } catch {}
 
@@ -166,7 +180,6 @@ async function checkChannelsReady(): Promise<boolean> {
   // commands.ownerAllowFrom. Set during pairing when a Telegram user is
   // promoted to operator. Does NOT get populated just by writing a bot
   // token — so this is a trustworthy signal.
-  const cfg = readConfig() ?? {};
   const commands = (cfg as Record<string, unknown>).commands as Record<string, unknown> | undefined;
   const ownerAllowFrom = commands?.ownerAllowFrom;
   if (Array.isArray(ownerAllowFrom) && ownerAllowFrom.length > 0) {
@@ -272,26 +285,45 @@ function resolveOpenclawDir(): string {
 const openclawDir = resolveOpenclawDir();
 
 function startCodexSession(): CodexSession {
-  // Remove existing config so onboard doesn't ask about it
-  try { fs.unlinkSync(configPath()); } catch {}
+  // Re-authentication vs first-time onboarding take different code paths.
+  // `openclaw onboard` would rewrite openclaw.json from scratch — wiping
+  // the Telegram bot token, pairing state, and anything else the user
+  // has already configured. So when a config already exists, use the
+  // narrower `models auth login --provider openai-codex` command, which
+  // only refreshes the Codex OAuth profile and leaves the rest alone.
+  // (This is exactly what OpenClaw's own "Model login expired" error
+  // tells the user to run.)
+  const isReauth = isConfigured();
 
-  const shell = pty.spawn("openclaw", [
-    "onboard",
-    "--accept-risk",
-    "--skip-health",
-    "--skip-channels",
-    "--skip-skills",
-    "--skip-ui",
-    "--skip-search",
-    "--no-install-daemon",
-    "--auth-choice", "openai-codex",
-    "--flow", "quickstart",
-    "--mode", "local",
-    "--gateway-port", String(INTERNAL_PORT),
-    "--gateway-bind", "loopback",
-    "--gateway-auth", "token",
-    "--gateway-token-ref-env", "OPENCLAW_GATEWAY_TOKEN",
-  ], {
+  let args: string[];
+  if (isReauth) {
+    args = ["models", "auth", "login", "--provider", "openai-codex"];
+    console.log("[codex] starting re-authentication (config preserved)");
+  } else {
+    // First-time onboarding: wipe any partial config so onboard doesn't
+    // get blocked asking about existing values.
+    try { fs.unlinkSync(configPath()); } catch {}
+    args = [
+      "onboard",
+      "--accept-risk",
+      "--skip-health",
+      "--skip-channels",
+      "--skip-skills",
+      "--skip-ui",
+      "--skip-search",
+      "--no-install-daemon",
+      "--auth-choice", "openai-codex",
+      "--flow", "quickstart",
+      "--mode", "local",
+      "--gateway-port", String(INTERNAL_PORT),
+      "--gateway-bind", "loopback",
+      "--gateway-auth", "token",
+      "--gateway-token-ref-env", "OPENCLAW_GATEWAY_TOKEN",
+    ];
+    console.log("[codex] starting first-time onboarding");
+  }
+
+  const shell = pty.spawn("openclaw", args, {
     name: "xterm-256color",
     cols: 120,
     rows: 30,
@@ -321,26 +353,35 @@ function startCodexSession(): CodexSession {
     }
   });
 
-  // Poll for config-file appearance instead of grepping PTY output for
-  // "Updated openclaw.json" — that line is not a contract and could change
-  // upstream without warning. onboard may also hang on a hooks prompt after
-  // writing the config, so we kill the PTY ourselves once the file exists.
-  const configWatcher = setInterval(() => {
-    if (session.status !== "waiting") {
-      clearInterval(configWatcher);
-      return;
-    }
-    if (isConfigured()) {
-      clearInterval(configWatcher);
-      console.log("[codex] config written, finishing session");
-      session.status = "done";
-      setTimeout(() => { try { shell.kill(); } catch {} }, 500);
-    }
-  }, 500);
+  if (!isReauth) {
+    // First-time onboarding: poll for config-file appearance instead of
+    // grepping PTY output for "Updated openclaw.json" — that line is
+    // not a contract. onboard may also hang on a hooks prompt after
+    // writing the config, so we kill the PTY ourselves once the file
+    // exists.
+    const configWatcher = setInterval(() => {
+      if (session.status !== "waiting") {
+        clearInterval(configWatcher);
+        return;
+      }
+      if (isConfigured()) {
+        clearInterval(configWatcher);
+        console.log("[codex] config written, finishing session");
+        session.status = "done";
+        setTimeout(() => { try { shell.kill(); } catch {} }, 500);
+      }
+    }, 500);
+  }
 
   shell.onExit(({ exitCode }) => {
-    session.status = (exitCode === 0 || isConfigured()) ? "done" : "error";
-    console.log(`[codex] exited code=${exitCode} status=${session.status}`);
+    if (isReauth) {
+      // Re-auth: completion is a clean PTY exit. Config already existed
+      // throughout, so isConfigured() isn't a useful signal here.
+      session.status = exitCode === 0 ? "done" : "error";
+    } else {
+      session.status = (exitCode === 0 || isConfigured()) ? "done" : "error";
+    }
+    console.log(`[codex] exited code=${exitCode} status=${session.status} mode=${isReauth ? "reauth" : "onboard"}`);
   });
 
   codexSession = session;
