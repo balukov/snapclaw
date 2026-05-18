@@ -22,7 +22,7 @@ import {
 } from "./config.js";
 
 import * as gateway from "./gateway.js";
-import { runCmd, redactSecrets, sleep } from "./utils.js";
+import { ensurePersistentLinks, runCmd, redactSecrets, sleep } from "./utils.js";
 
 // --- Auth ---
 
@@ -881,6 +881,11 @@ server.listen(PORT, "0.0.0.0", async () => {
   try {
     fs.chmodSync(STATE_DIR, 0o700);
   } catch {}
+
+  // Pre-symlink ~/.openclaw and ~/.codex to the persistent volume BEFORE
+  // any openclaw subprocess runs (codex onboard writes its OAuth tokens
+  // under $HOME by default, and would otherwise lose them on every redeploy).
+  ensurePersistentLinks();
 
   // Auto-onboard if not configured
   if (!isConfigured()) {

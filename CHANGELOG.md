@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.7
+
+- Fix Codex OAuth tokens dying on every redeploy. Symptom after v0.9.6: bot finally responds (since v0.9.6 unblocked the telegram plugin), but the first message back is *"Model login expired on the gateway for openai-codex. Re-auth with openclaw models auth login --provider openai-codex, then try again."* Cause: Codex auth tokens are written under `$HOME/.codex` by default, and `$HOME` (`/home/node`) is the Railway-ephemeral container layer. Same class of bug as v0.9.2's memory fix.
+- Generalized the symlink helper from gateway.ts into a shared `ensurePersistentLinks()` that now sets up both `~/.openclaw → STATE_DIR` (memory) and `~/.codex → STATE_DIR/codex-home` (auth). Run it at server startup (before any `openclaw onboard` subprocess) and again on every gateway boot, so existing deployments self-heal.
+- Note: the user still has to re-authenticate Codex once after upgrading to v0.9.7, because the auth lost in the v0.9.6 redeploy can't be recovered. After re-auth, the tokens will be on the persistent volume and survive future redeploys.
+
 ## 0.9.6
 
 - **Critical regression fix**: v0.9.2 set `plugins.allow = ["codex"]` to silence a startup warning, but OpenClaw treats `plugins.allow` as an **exclusive allowlist** (only listed plugins are permitted to load) rather than a non-bundled trust list. The effect: every bundled plugin — telegram, browser, memory-core, canvas, file-transfer, device-pair, phone-control, talk-voice — was being blocked. Users who installed SnapClaw fresh on v0.9.2 through v0.9.5 would see Codex auth complete, save a Telegram bot token, then message the bot and get no response, because the telegram plugin never started polling. Reset `plugins.allow` to `[]` on every boot — actively, so existing deployments that picked up the bad config self-heal on next restart.

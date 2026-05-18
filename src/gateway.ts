@@ -1,7 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import {
   STATE_DIR,
   WORKSPACE_DIR,
@@ -11,7 +9,7 @@ import {
   isConfigured,
   configPath,
 } from "./config.js";
-import { runCmd, sleep } from "./utils.js";
+import { ensurePersistentLinks, runCmd, sleep } from "./utils.js";
 
 let proc: ChildProcess | null = null;
 let starting: Promise<void> | null = null;
@@ -222,39 +220,6 @@ async function ensureConfig(): Promise<void> {
   }
 }
 
-function ensureHomeStateLink(): void {
-  // OpenClaw's memory-core plugin (and likely other components) write to
-  // `~/.openclaw/workspace/memory/<date>.md` regardless of OPENCLAW_STATE_DIR.
-  // On Railway, $HOME (/home/node) is the ephemeral container layer, so those
-  // writes vanish on every redeploy — silently eating the agent's long-term
-  // memory. Force the fallback path onto the persistent volume by making
-  // ~/.openclaw a symlink to STATE_DIR.
-  const homeOpenclaw = path.join(os.homedir(), ".openclaw");
-  try {
-    const st = fs.lstatSync(homeOpenclaw);
-    if (st.isSymbolicLink()) {
-      // Already a symlink — verify target and re-create if it points elsewhere
-      try {
-        if (fs.readlinkSync(homeOpenclaw) === STATE_DIR) return;
-      } catch {}
-      fs.unlinkSync(homeOpenclaw);
-    } else {
-      // Real directory: move aside. Existing entries here were ephemeral and
-      // would have been lost on next redeploy anyway, but keep a backup just
-      // in case the operator wants to inspect what was there.
-      fs.renameSync(homeOpenclaw, `${homeOpenclaw}.ephemeral.${Date.now()}`);
-    }
-  } catch {
-    // ENOENT — fresh container, nothing to move aside
-  }
-  try {
-    fs.symlinkSync(STATE_DIR, homeOpenclaw, "dir");
-    console.log(`[gateway] linked ~/.openclaw → ${STATE_DIR} (persistent memory)`);
-  } catch (err) {
-    console.warn(`[gateway] failed to link ~/.openclaw: ${(err as Error).message}`);
-  }
-}
-
 function clearStaleBrowserLocks(): void {
   // OpenClaw stores Chromium user-data dirs at:
   //   $OPENCLAW_STATE_DIR/browser/<profile>/user-data/Singleton{Lock,Cookie,Socket}
@@ -291,7 +256,7 @@ export async function start(): Promise<void> {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
-  ensureHomeStateLink();
+  ensurePersistentLinks();
   clearStaleBrowserLocks();
 
   // Stop any leftover gateway process before starting
