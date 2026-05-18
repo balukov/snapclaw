@@ -758,6 +758,16 @@ async function handleRequest(
       return sendJson(res, { ok: false, error: "Unknown command" }, 400);
     }
 
+    // API: mark channels as ready (manual override). For users whose bot
+    // is already paired via persistent config state from a previous
+    // session — checkChannelsReady() can't always detect that, so the
+    // UI gets stuck in "Waiting for pairing code..." while the bot is
+    // actually fully functional. This endpoint just writes the flag.
+    if (url === "/snapclaw/api/channels/mark-ready" && method === "POST") {
+      markChannelsReady();
+      return sendJson(res, { ok: true });
+    }
+
     // API: pairing approve
     if (url === "/snapclaw/api/pairing/approve" && method === "POST") {
       const body = await readJson(req);

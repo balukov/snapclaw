@@ -251,6 +251,26 @@ $("telegramConnectBtn").onclick = async () => {
   }
 };
 
+$("telegramMarkPairedBtn").onclick = async (e) => {
+  e.preventDefault();
+  // Manual override for users whose bot is already paired via persistent
+  // config state from a previous SnapClaw session — the heuristics in
+  // checkChannelsReady() can't always detect that, so the UI gets stuck.
+  // The user is the source of truth here: if they say it's paired, mark
+  // the flag and refresh the UI.
+  try {
+    await httpJson<{ ok: boolean }>("/snapclaw/api/channels/mark-ready", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    await refreshStatus();
+    location.reload();
+  } catch (err) {
+    showOutput($("telegramOutput"), `Error: ${err}`);
+  }
+};
+
 $("telegramApproveBtn").onclick = async () => {
   const code = ($("telegramPairingCode") as HTMLInputElement).value.trim().toUpperCase();
   if (!code) {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.10
+
+- Add an "Already paired? Mark as connected" link in the Step 2 *"Waiting for pairing code..."* state. The auto-detection in `checkChannelsReady()` only flips to `true` on signals it can verify (approved devices, `commands.ownerAllowFrom` non-empty, persistent `.channels-ready` flag). It can miss bots that were paired in a previous SnapClaw session and survived via persistent config state the heuristics don't recognize — the bot works in Telegram, but the setup UI is stuck in pending. The new link calls a new `POST /snapclaw/api/channels/mark-ready` endpoint that writes the `.channels-ready` flag directly, treating the user as the source of truth.
+
 ## 0.9.9
 
 - **Re-authenticate no longer wipes the whole config.** v0.9.8 wired the "Re-authenticate" link to `startCodexSession()`, which deletes `openclaw.json` before running `openclaw onboard` — so a user clicking it lost their Telegram bot token, pairing state, and any other settings. After that, the gateway booted with only 3 plugins (no telegram), and the bot effectively disappeared from polling. Now: if a config already exists, re-auth runs `openclaw models auth login --provider openai-codex` instead — narrow, OAuth-only, leaves everything else intact. (This is exactly what OpenClaw's own "Model login expired" error tells users to run.) First-time onboarding still uses the full `openclaw onboard` flow with the config wipe.
