@@ -358,9 +358,14 @@ $("dashRestart").onclick = async () => {
 refreshStatus().then((s) => {
   if (!s) return;
   restoreUI(s);
-  // Terminal/admin should be reachable any time the agent is configured,
-  // not only when channels are ready — so the user can diagnose from setup.
+  // Terminal/admin reachable any time the agent is configured, so the user
+  // can diagnose from setup. The "You're all set!" success block inside the
+  // dashboard is gated separately on channelsReady — showing it before
+  // pairing makes the page lie about setup status (issue from v0.9.4).
   if (s.configured) {
     showDashboard();
+    if (s.channelsReady) {
+      $("dashboardReady").classList.remove("hidden");
+    }
   }
 });

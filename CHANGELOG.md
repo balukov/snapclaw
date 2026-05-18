@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.5
+
+- Fix the setup UI showing **Step 3: "You're all set!"** in green as soon as Codex OAuth finished, before Telegram was paired. The dashboard div (which contains the success block) was unconditionally shown whenever `configured=true`, on the assumption that admin/terminal access should be reachable during incomplete setup. Kept that intent — the admin section still appears as soon as the agent is configured — but moved the "You're all set!" header + "Open Web UI" button into a new `#dashboardReady` wrapper that is only revealed when `channelsReady=true`. Pairs with v0.9.4's tightened pairing detection: now the green checkmark only appears when the user has actually completed Telegram pairing.
+
 ## 0.9.4
 
 - Fix false-positive "Telegram bot is connected" state on fresh installs. After saving a bot token, `checkChannelsReady()` was returning true via two over-eager heuristics: (1) `plugins.entries.<channel>` matches as soon as OpenClaw registers the telegram plugin, before any pairing handshake; (2) `openclaw channels list` mentions the channel name as soon as the bot token is configured. Both fire while the user has never even messaged the bot. Worse, the false state was then persisted to `/data/.openclaw/.channels-ready`, so refreshing the setup UI kept reporting "connected" forever even though the bot had never responded with a pairing code. Replaced both with strict pairing signals: an approved device in `openclaw devices list`, or a non-empty `commands.ownerAllowFrom` — neither of which gets populated just by writing a bot token.

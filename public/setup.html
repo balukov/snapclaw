@@ -99,18 +99,20 @@
 
   </div>
 
-  <!-- Dashboard (shown when fully configured) -->
+  <!-- Dashboard (shown when configured; success block gated on channelsReady) -->
   <div id="dashboard" class="hidden">
     <div class="card">
-      <div class="step-header">
-        <span class="step-number done">3</span>
-        <div>
-          <h2>You're all set!</h2>
-          <p class="muted">Your agent is running. Message your Telegram bot or use the Web UI to start chatting.</p>
+      <div id="dashboardReady" class="hidden">
+        <div class="step-header">
+          <span class="step-number done">3</span>
+          <div>
+            <h2>You're all set!</h2>
+            <p class="muted">Your agent is running. Message your Telegram bot or use the Web UI to start chatting.</p>
+          </div>
         </div>
-      </div>
-      <div class="btn-row">
-        <a href="/" target="_blank" class="btn">Open Web UI</a>
+        <div class="btn-row">
+          <a href="/" target="_blank" class="btn">Open Web UI</a>
+        </div>
       </div>
       <h3>Admin</h3>
       <div class="term-controls">
