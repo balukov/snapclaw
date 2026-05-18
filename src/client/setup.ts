@@ -93,6 +93,10 @@ function restoreUI(s: StatusResponse): void {
     const modelLabel = typeof s.model === "string" && s.model ? s.model : "Connected";
     setBadge($("codexStatus"), "success", modelLabel);
     $("codexStep").classList.add("done");
+    // Codex "connected" only means a profile exists in config — the tokens
+    // can still be expired or wiped. Expose a re-auth path so users who
+    // hit "Model login expired" can recover without /reset.
+    $("codexReauth").classList.remove("hidden");
   }
 
   // Telegram state
@@ -148,6 +152,18 @@ $("codexStartBtn").onclick = async () => {
     showOutput($("codexOutput"), `Error: ${e}`);
     setLoading(btn, false, "Connect");
   }
+};
+
+$("codexReauthBtn").onclick = (e) => {
+  e.preventDefault();
+  // Reveal the connect UI and trigger the same OAuth start flow. The
+  // backend kills any prior session before starting a new one, so this
+  // is safe to call regardless of current state.
+  $("codexReauth").classList.add("hidden");
+  $("codexStart").classList.remove("hidden");
+  $("codexStep").classList.remove("done");
+  setBadge($("codexStatus"), "pending", "Re-authenticating...");
+  ($("codexStartBtn") as HTMLButtonElement).click();
 };
 
 $("codexCopyBtn").onclick = () => {

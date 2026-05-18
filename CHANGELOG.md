@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.8
+
+- Add a "Re-authenticate" link under Step 1 when Codex shows as connected. The `codexConnected` status only checks that an `auth.profiles` entry exists in the config — it can't tell whether the underlying OAuth tokens still work. When OpenClaw later returns "Model login expired on the gateway for openai-codex" (e.g. after the v0.9.6 redeploy nuked `~/.codex`), users had no way to re-trigger OAuth from the UI without going through `/reset` and rerunning the whole onboarding wizard. The new link reveals the connect UI and calls the existing `/snapclaw/api/codex/start` flow, which already kills any prior session before starting a fresh one.
+
 ## 0.9.7
 
 - Fix Codex OAuth tokens dying on every redeploy. Symptom after v0.9.6: bot finally responds (since v0.9.6 unblocked the telegram plugin), but the first message back is *"Model login expired on the gateway for openai-codex. Re-auth with openclaw models auth login --provider openai-codex, then try again."* Cause: Codex auth tokens are written under `$HOME/.codex` by default, and `$HOME` (`/home/node`) is the Railway-ephemeral container layer. Same class of bug as v0.9.2's memory fix.
