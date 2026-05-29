@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.11
+
+- **Pin the OpenClaw base image instead of tracking `:latest`.** The runtime stage built `FROM ghcr.io/openclaw/openclaw:latest`, so the underlying OpenClaw could change under SnapClaw on any rebuild — with no deliberate version bump and no record of which version was deployed. That rolling base is also awkward to update on Railway, where the cached `FROM :latest` layer often isn't re-pulled, so "redeploy" can silently keep the old OpenClaw. And because re-auth assumes OpenClaw's `models auth login` leaves the rest of the config intact, an unannounced OpenClaw behavior change is a latent config-loss risk. Now pinned via `ARG OPENCLAW_VERSION` (currently `2026.5.27`, the latest stable): updates are an explicit one-line bump, builds are reproducible, and the version reference changes on bump so the base layer is genuinely re-pulled. `docker-compose.yml` documents overriding it via the build arg.
+
 ## 0.9.10
 
 - Add an "Already paired? Mark as connected" link in the Step 2 *"Waiting for pairing code..."* state. The auto-detection in `checkChannelsReady()` only flips to `true` on signals it can verify (approved devices, `commands.ownerAllowFrom` non-empty, persistent `.channels-ready` flag). It can miss bots that were paired in a previous SnapClaw session and survived via persistent config state the heuristics don't recognize — the bot works in Telegram, but the setup UI is stuck in pending. The new link calls a new `POST /snapclaw/api/channels/mark-ready` endpoint that writes the `.channels-ready` flag directly, treating the user as the source of truth.

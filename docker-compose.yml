@@ -2,9 +2,9 @@ services:
   snapclaw:
     build:
       context: .
+      # Override the OpenClaw version pinned in the Dockerfile (ARG OPENCLAW_VERSION):
       # args:
-      #   EXTRA_APT_PACKAGES: "git curl jq"
-      #   OPENCLAW_VERSION: "2026.5.12"
+      #   OPENCLAW_VERSION: "2026.5.27"
     ports:
       - "3000:3000"
     shm_size: "2gb"

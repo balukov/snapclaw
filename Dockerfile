@@ -1,5 +1,12 @@
 # syntax=docker/dockerfile:1
 
+# Pin the OpenClaw runtime image. Tracking `:latest` meant the underlying
+# OpenClaw could change under SnapClaw without a deliberate redeploy — a
+# rolling base that's hard to update predictably (Railway caches the layer)
+# and a recurring source of surprise behavior changes. Bump this value to
+# update OpenClaw; the build then re-pulls the new pinned digest.
+ARG OPENCLAW_VERSION=2026.5.27
+
 # ============================================================
 # Stage 1: Build snapclaw (compile native modules + client JS + server TS)
 # ============================================================
@@ -23,9 +30,9 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ============================================================
-# Stage 2: Runtime — based on official openclaw image
+# Stage 2: Runtime — based on official openclaw image (pinned, see top ARG)
 # ============================================================
-FROM ghcr.io/openclaw/openclaw:latest
+FROM ghcr.io/openclaw/openclaw:${OPENCLAW_VERSION}
 
 USER root
 
