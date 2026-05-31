@@ -30,15 +30,22 @@ if [ -f "$CODEX_PKG" ]; then
   CORE_VER=$(openclaw --version 2>/dev/null | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+' | head -1 || true)
   CODEX_VER=$(grep -m1 '"version"' "$CODEX_PKG" | sed -E 's/.*"version"[^"]*"([^"]+)".*/\1/' || true)
   if [ -n "$CORE_VER" ] && [ -n "$CODEX_VER" ] && [ "$CORE_VER" != "$CODEX_VER" ]; then
-    echo "[snapclaw] codex plugin $CODEX_VER != core $CORE_VER — updating"
-    openclaw plugins update </dev/null >/dev/null 2>&1 \
-      || echo "[snapclaw] codex plugin update failed (continuing with $CODEX_VER)"
+    echo "[snapclaw] codex plugin $CODEX_VER != core $CORE_VER — reinstalling pinned"
+    openclaw plugins install "npm:@openclaw/codex@$CORE_VER" --pin --force </dev/null >/dev/null 2>&1 \
+      || echo "[snapclaw] codex pin-install failed (continuing with $CODEX_VER)"
+    # A root-run install can leave config/records root-owned; re-assert node
+    # ownership of the state tree so the gateway (node) can read it.
+    chown -R node:node /data/.openclaw 2>/dev/null || true
   fi
 fi
-# Re-own the volume plugin tree to root so the ownership check passes (covers
-# both the onboarding install and any update above). Idempotent.
+# Plugins must be root-owned for the 2026.5.27+ ownership check (an npm install
+# is otherwise owned by node/uid 1000 and blocked). Idempotent; covers both the
+# onboarding install and the reinstall above.
 if [ -d "$PLUGIN_ROOT" ]; then
   chown -R 0:0 "$PLUGIN_ROOT" 2>/dev/null || true
 fi
+# Keep openclaw.json node-owned so the gateway (which runs as node) can always
+# read its config — a root-owned config locks it out with EACCES.
+[ -f /data/.openclaw/openclaw.json ] && chown node:node /data/.openclaw/openclaw.json 2>/dev/null || true
 
 exec gosu node "$@"
