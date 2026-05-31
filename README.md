@@ -108,7 +108,9 @@ No.
 No. Railway handles deployment.
 
 ### Can I update later?
-Yes, just redeploy.
+Yes, just redeploy. Each release pins a tested OpenClaw version, so a redeploy
+updates SnapClaw and rebuilds the same known-good OpenClaw — it can't break your
+bot by pulling an untested OpenClaw out from under you.
 
 ## Credits
 
