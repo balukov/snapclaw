@@ -38,7 +38,7 @@ USER root
 
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    tini gosu \
+    tini gosu sudo \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Playwright's bundled Chromium for full browser tool support
@@ -73,6 +73,18 @@ RUN mkdir -p /data/.openclaw /data/workspace \
 
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Allow the unprivileged `node` gateway to re-own the plugin tree to root
+# after onboarding installs the codex plugin (OpenClaw 2026.5.27+ blocks
+# plugins not owned by root). The helper is root-owned, takes no arguments,
+# and has a hardcoded target, so the NOPASSWD grant can't be abused.
+COPY scripts/own-plugins.sh /usr/local/bin/snapclaw-own-plugins
+RUN chown root:root /usr/local/bin/snapclaw-own-plugins \
+  && chmod 0755 /usr/local/bin/snapclaw-own-plugins \
+  && printf 'node ALL=(root) NOPASSWD: /usr/local/bin/snapclaw-own-plugins\n' \
+       > /etc/sudoers.d/snapclaw \
+  && chmod 0440 /etc/sudoers.d/snapclaw \
+  && visudo -cf /etc/sudoers.d/snapclaw
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "fetch('http://localhost:'+(process.env.PORT||3000)+'/healthz').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"

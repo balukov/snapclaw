@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.14
+
+- **Close the fresh-install gap so new deploys work without a second redeploy.** v0.9.13 fixed existing installs (the entrypoint re-owns the codex plugin to root at boot), but a brand-new install hit the OpenClaw 2026.5.27+ ownership check: first-time onboarding installs the codex plugin as the unprivileged `node` user, so it stayed node-owned — and therefore blocked — until the *next* container restart. New users had to redeploy once after setup.
+- The gateway runs as `node` and can't `chown` to root itself, so this adds a **narrow `sudo` helper**: `scripts/own-plugins.sh` (installed root-owned at `/usr/local/bin/snapclaw-own-plugins`) re-owns the plugin tree to root, and a NOPASSWD sudoers rule (`/etc/sudoers.d/snapclaw`, validated with `visudo` at build time) lets `node` run *only* that helper. The helper takes no arguments and has a hardcoded target, so the grant can't be repurposed; the script stays root-owned and non-writable by `node`. `gateway.start()` invokes it right after `ensureConfig()` and before the gateway process loads plugins, so a freshly onboarded codex plugin becomes root-owned in the same session — no restart. Best-effort: if the helper is absent (e.g. local dev), it's logged and skipped, never blocking gateway start.
+
 ## 0.9.13
 
 - **Fix the v0.9.12 codex auto-reconcile (it didn't work).** v0.9.12 ran `openclaw plugins update` to refresh the stale codex plugin, but that command is interactive and refuses to overwrite an already-installed plugin (`plugin already exists … rerun install with --force`), so under the entrypoint's non-interactive shell it just failed and left the plugin at the old version. Replaced with the verified, deterministic invocation: `openclaw plugins install npm:@openclaw/codex@$CORE_VER --pin --force` — pins codex to the exact core version and replaces the stale copy. Confirmed against a live deployment (2026.5.12 → 2026.5.27, harness mismatch resolved, bot replies).

@@ -249,6 +249,21 @@ function clearStaleBrowserLocks(): void {
   if (cleared > 0) console.log(`[gateway] cleared ${cleared} stale Chromium Singleton lock(s)`);
 }
 
+// Re-own the plugin tree to root via the narrow NOPASSWD sudo helper installed
+// in the Dockerfile (see scripts/own-plugins.sh). The gateway runs as `node`
+// and can't chown to root directly. Best-effort: a failure (e.g. helper absent
+// in local dev) is logged, not fatal.
+async function reownPlugins(): Promise<void> {
+  try {
+    const r = await runCmd("sudo", ["-n", "/usr/local/bin/snapclaw-own-plugins"]);
+    if (r.code !== 0) {
+      console.warn(`[gateway] plugin re-own exited ${r.code}: ${r.output.trim()}`);
+    }
+  } catch (err) {
+    console.warn("[gateway] plugin re-own failed:", err);
+  }
+}
+
 export async function start(): Promise<void> {
   if (isRunning()) return;
   if (!isConfigured()) throw new Error("Not configured");
@@ -294,6 +309,14 @@ export async function start(): Promise<void> {
   // targeted config writes in ensureConfig() below cover SnapClaw's needs.
 
   await ensureConfig();
+
+  // Re-own the plugin tree to root before the gateway loads plugins. OpenClaw
+  // 2026.5.27+ blocks plugins not owned by root ("suspicious ownership"), but
+  // onboarding installs the codex plugin as the unprivileged `node` user. The
+  // entrypoint handles this at container boot; this covers the mid-session
+  // case (fresh onboarding) so codex loads without a restart. Best-effort via
+  // a narrow NOPASSWD sudo helper — never blocks gateway start.
+  await reownPlugins();
 
   proc = spawn(
     "openclaw",
