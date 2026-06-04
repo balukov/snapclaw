@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { STATE_DIR, WORKSPACE_DIR } from "./config.js";
+import { STATE_DIR, WORKSPACE_DIR, GATEWAY_TOKEN, SETUP_PASSWORD } from "./config.js";
 
 // Make sure $HOME-resolved openclaw/codex paths land on the persistent
 // volume. Several OpenClaw components (memory-core, codex auth) fall
@@ -88,10 +88,27 @@ export function runCmd(
 }
 
 export function redactSecrets(text: string): string {
-  return text
-    .replace(/(sk-ant-[A-Za-z0-9_-]{10,})/g, "[REDACTED]")
-    .replace(/(sk-[A-Za-z0-9_-]{20,})/g, "[REDACTED]")
-    .replace(/(\d{5,}:[A-Za-z0-9_-]{10,})/g, "[REDACTED]");
+  let out = text
+    .replace(/sk-ant-[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
+    .replace(/sk-[A-Za-z0-9_-]{20,}/g, "[REDACTED]")
+    // Telegram bot token (<digits>:<secret>)
+    .replace(/\d{5,}:[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
+    // 64-hex blobs: the gateway token, sha256 session tokens, etc.
+    .replace(/\b[A-Fa-f0-9]{64}\b/g, "[REDACTED]")
+    // JSON/CLI access|refresh|id token fields
+    .replace(
+      /(["']?(?:access|refresh|id)_token["']?\s*[:=]\s*["']?)[A-Za-z0-9._-]{10,}/gi,
+      "$1[REDACTED]",
+    )
+    // Authorization: Bearer <token>
+    .replace(/(Bearer\s+)[A-Za-z0-9._-]{10,}/gi, "$1[REDACTED]");
+
+  // Redact known literal secrets by exact value, covering tokens (e.g. a
+  // custom OPENCLAW_GATEWAY_TOKEN that isn't 64-hex) no generic pattern catches.
+  for (const secret of [GATEWAY_TOKEN, SETUP_PASSWORD]) {
+    if (secret && secret.length >= 6) out = out.split(secret).join("[REDACTED]");
+  }
+  return out;
 }
 
 export function claw(...args: string[]): [string, string[]] {

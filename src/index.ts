@@ -11,6 +11,7 @@ import * as tar from "tar";
 import {
   PORT,
   SETUP_PASSWORD,
+  SESSION_SECRET,
   STATE_DIR,
   WORKSPACE_DIR,
   GATEWAY_TARGET,
@@ -28,7 +29,15 @@ import { ensurePersistentLinks, runCmd, redactSecrets, sleep } from "./utils.js"
 
 const terminalTokens = new Map<string, number>();
 
-const SESSION_SECRET = crypto.randomBytes(16).toString("hex");
+// Constant-time comparison so password/token checks don't leak via response
+// timing. timingSafeEqual requires equal-length buffers, so an unavoidable
+// length check comes first.
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
 
 function makeSessionToken(): string {
   const hmac = crypto.createHmac("sha256", SESSION_SECRET);
@@ -36,19 +45,70 @@ function makeSessionToken(): string {
   return hmac.digest("hex");
 }
 
+// --- Login brute-force protection ---
+// The whole security model rests on SETUP_PASSWORD (OpenClaw device auth is
+// delegated away) and the panel sits on a public domain — so throttle guesses
+// per client IP.
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const loginAttempts = new Map<
+  string,
+  { fails: number; first: number; lockedUntil: number }
+>();
+
+function clientIp(req: http.IncomingMessage): string {
+  const xff = (req.headers["x-forwarded-for"] as string | undefined)
+    ?.split(",")[0]
+    ?.trim();
+  return xff || req.socket.remoteAddress || "unknown";
+}
+
+// Remaining lockout in ms (0 if not locked).
+function lockoutRemaining(ip: string): number {
+  const e = loginAttempts.get(ip);
+  if (!e) return 0;
+  return e.lockedUntil > Date.now() ? e.lockedUntil - Date.now() : 0;
+}
+
+function recordLoginFail(ip: string): void {
+  const now = Date.now();
+  const e = loginAttempts.get(ip) ?? { fails: 0, first: now, lockedUntil: 0 };
+  if (now - e.first > LOGIN_WINDOW_MS) {
+    e.fails = 0;
+    e.first = now;
+    e.lockedUntil = 0;
+  }
+  e.fails++;
+  if (e.fails >= LOGIN_MAX_FAILS) e.lockedUntil = now + LOGIN_WINDOW_MS;
+  loginAttempts.set(ip, e);
+}
+
+// Verify a submitted password (constant-time) with per-IP lockout. Returns
+// false while locked out, even when the password is correct.
+function verifyPassword(ip: string, password: string): boolean {
+  if (!SETUP_PASSWORD) return true;
+  if (lockoutRemaining(ip) > 0) return false;
+  if (safeEqual(password, SETUP_PASSWORD)) {
+    loginAttempts.delete(ip);
+    return true;
+  }
+  recordLoginFail(ip);
+  return false;
+}
+
 function checkAuth(req: http.IncomingMessage): boolean {
   if (!SETUP_PASSWORD) return true;
   // Check session cookie
   const cookies = req.headers.cookie ?? "";
   const match = cookies.match(/snapclaw_session=([a-f0-9]+)/);
-  if (match && match[1] === makeSessionToken()) return true;
-  // Also accept basic auth for API clients
+  if (match && safeEqual(match[1], makeSessionToken())) return true;
+  // Also accept basic auth for API clients (rate-limited like the login form)
   const header = req.headers.authorization ?? "";
   const [scheme, encoded] = header.split(" ");
   if (scheme === "Basic" && encoded) {
     const decoded = Buffer.from(encoded, "base64").toString("utf8");
     const password = decoded.slice(decoded.indexOf(":") + 1);
-    return password === SETUP_PASSWORD;
+    return verifyPassword(clientIp(req), password);
   }
   return false;
 }
@@ -493,16 +553,31 @@ async function handleRequest(
   if (url.startsWith("/snapclaw")) {
     // Login form POST
     if (url === "/snapclaw/login" && method === "POST") {
+      const ip = clientIp(req);
+      const locked = lockoutRemaining(ip);
+      if (locked > 0) {
+        const mins = Math.ceil(locked / 60_000);
+        return sendLoginPage(res, `Too many attempts. Try again in ${mins} min.`);
+      }
       const body = await readBody(req);
       const params = new URLSearchParams(body.toString("utf8"));
       const password = params.get("password") ?? "";
-      if (password === SETUP_PASSWORD) {
+      if (verifyPassword(ip, password)) {
+        const proto = (req.headers["x-forwarded-proto"] as string | undefined)
+          ?.split(",")[0]
+          ?.trim();
+        const secure = proto === "https" ? "; Secure" : "";
         res.writeHead(302, {
           Location: "/snapclaw",
-          "Set-Cookie": `snapclaw_session=${makeSessionToken()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`,
+          "Set-Cookie": `snapclaw_session=${makeSessionToken()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`,
         });
         res.end();
         return;
+      }
+      const stillLocked = lockoutRemaining(ip);
+      if (stillLocked > 0) {
+        const mins = Math.ceil(stillLocked / 60_000);
+        return sendLoginPage(res, `Too many attempts. Try again in ${mins} min.`);
       }
       return sendLoginPage(res, "Wrong password");
     }

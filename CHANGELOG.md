@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.15
+
+- **Security hardening.** Several changes that close gaps in the admin panel, which sits on a public Railway domain and is the only thing guarding the agent's root shell and OAuth tokens:
+  - **An empty `SETUP_PASSWORD` no longer opens everything to the internet.** Previously a deploy that forgot the env var left the admin panel, config editor, and terminal wide open. Now SnapClaw uses the env var if set, honors an explicit `SNAPCLAW_ALLOW_NO_AUTH=1` opt-out for local dev, and otherwise **generates a strong password, persists it to the volume, and logs it once** so the operator can find it in Railway logs. **Action for existing password-less deploys:** after upgrading, grab the generated password from the logs or set `SETUP_PASSWORD` yourself.
+  - **Login brute-force protection.** Per-IP lockout (5 failed attempts → 15-minute cooldown) on both the login form and the Basic-auth API path; the login page shows a "try again in N min" message.
+  - **Constant-time credential checks.** Password and session-cookie comparisons now use `crypto.timingSafeEqual` instead of `===`, removing a timing side channel.
+  - **Persistent session secret.** The login-cookie HMAC key is now stored on the volume instead of regenerated each boot, so operators are no longer logged out on every redeploy. Cookies also get the `Secure` flag when served over HTTPS.
+  - **Broader secret redaction.** Console/CLI output now redacts 64-hex blobs (gateway/session tokens), `access`/`refresh`/`id_token` fields, `Bearer` tokens, and the literal gateway token and setup password — so commands like `config get .` can't leak them.
+
 ## 0.9.14
 
 - **Close the fresh-install gap so new deploys work without a second redeploy.** v0.9.13 fixed existing installs (the entrypoint re-owns the codex plugin to root at boot), but a brand-new install hit the OpenClaw 2026.5.27+ ownership check: first-time onboarding installs the codex plugin as the unprivileged `node` user, so it stayed node-owned — and therefore blocked — until the *next* container restart. New users had to redeploy once after setup.
