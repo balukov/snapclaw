@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.16
+
+- **Gateway crash watchdog.** If the OpenClaw gateway exits unexpectedly, SnapClaw now auto-restarts it with exponential backoff (1s→30s, reset on a healthy boot). Previously a crash left the bot silently down — Telegram polling stopped — until the next proxied HTTP request happened to trigger a restart. Deliberate stops/restarts are exempt from the watchdog, and a late exit event from an old process can no longer null out a freshly-restarted one.
+- **Single guarded gateway start.** `ensure()`, `restart()`, and the watchdog now share one in-flight start instead of risking a double-spawn under concurrent triggers.
+- **`/healthz` tells the truth.** The body now reports gateway liveness (`running`/`down`/`unconfigured`) and `/api/status` exposes `gatewayRunning`, while `/healthz` stays HTTP 200 so the in-process watchdog (not a container kill) owns recovery. `waitReady` no longer treats a 5xx as "ready".
+- **Backups stay a sane size and don't pile up.** Export now excludes the regenerable Chromium profile/cache (often hundreds of MB) and backup clutter, and awaits stream completion instead of returning mid-flight. Import stops the gateway first (no extracting over open files), streams straight from the request (no full in-memory buffer), and always restarts afterward. Timestamped config backups are capped at 10 and `.ephemeral.*` forensic dirs at 2, so the volume no longer grows without bound.
+
 ## 0.9.15
 
 - **Security hardening.** Several changes that close gaps in the admin panel, which sits on a public Railway domain and is the only thing guarding the agent's root shell and OAuth tokens:

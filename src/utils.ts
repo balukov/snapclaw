@@ -32,6 +32,8 @@ function ensureSymlink(linkPath: string, target: string): void {
       // place. Contents in here would have been lost on next redeploy
       // anyway — the rename preserves them for forensic inspection.
       fs.renameSync(linkPath, `${linkPath}.ephemeral.${Date.now()}`);
+      // Don't let these forensic copies accumulate across redeploys.
+      pruneOldFiles(path.dirname(linkPath), `${path.basename(linkPath)}.ephemeral.`, 2);
     }
   } catch {
     // ENOENT — fresh container, nothing to move aside
@@ -46,6 +48,24 @@ function ensureSymlink(linkPath: string, target: string): void {
 
 export const sleep = (ms: number) =>
   new Promise((r) => setTimeout(r, ms));
+
+// Keep only the newest `keep` entries in `dir` whose name starts with `prefix`,
+// deleting the rest. Used to stop timestamped config backups and ephemeral
+// directories from growing without bound on the persistent volume. Names carry
+// an ISO/epoch timestamp suffix, so a lexical sort is chronological.
+export function pruneOldFiles(dir: string, prefix: string, keep: number): void {
+  try {
+    const matches = fs
+      .readdirSync(dir)
+      .filter((f) => f.startsWith(prefix))
+      .sort();
+    for (const f of matches.slice(0, Math.max(0, matches.length - keep))) {
+      try {
+        fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+      } catch {}
+    }
+  } catch {}
+}
 
 interface CmdResult {
   code: number;

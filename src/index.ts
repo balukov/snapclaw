@@ -23,7 +23,7 @@ import {
 } from "./config.js";
 
 import * as gateway from "./gateway.js";
-import { ensurePersistentLinks, runCmd, redactSecrets, sleep } from "./utils.js";
+import { ensurePersistentLinks, runCmd, redactSecrets, sleep, pruneOldFiles } from "./utils.js";
 
 // --- Auth ---
 
@@ -539,9 +539,17 @@ async function handleRequest(
   const url = req.url ?? "/";
   const method = req.method ?? "GET";
 
-  // Health check — no auth
+  // Health check — no auth. Stays 200 while the web server is up: the
+  // in-process gateway watchdog handles recovery, so we don't want Docker/
+  // Railway killing the whole container over a transient gateway blip. The
+  // body still reports gateway liveness honestly for monitors and the UI.
   if (url === "/healthz" || url === "/snapclaw/healthz") {
-    return sendJson(res, { ok: true });
+    const gw = !isConfigured()
+      ? "unconfigured"
+      : gateway.isRunning()
+        ? "running"
+        : "down";
+    return sendJson(res, { ok: true, gateway: gw });
   }
 
   // Static assets — no auth
@@ -634,6 +642,7 @@ async function handleRequest(
         model,
         openclawVersion: cachedVersion,
         gatewayTarget: GATEWAY_TARGET,
+        gatewayRunning: gateway.isRunning(),
       });
     }
 
@@ -739,11 +748,12 @@ async function handleRequest(
         return sendJson(res, { ok: false, error: "Too large" }, 400);
       }
       const p = configPath();
-      // Backup
+      // Backup, keeping only the most recent few so they don't pile up on the volume.
       try {
         if (fs.existsSync(p)) {
           const ts = new Date().toISOString().replace(/[:.]/g, "-");
           fs.copyFileSync(p, `${p}.bak-${ts}`);
+          pruneOldFiles(path.dirname(p), `${path.basename(p)}.bak-`, 10);
         }
       } catch {}
       fs.writeFileSync(p, content, "utf8");
@@ -891,21 +901,50 @@ async function handleRequest(
       return sendJson(res, { ok: true, output: "Config deleted. Run setup again." });
     }
 
-    // Export backup
+    // Export backup. Excludes the regenerable Chromium profile/cache (often
+    // hundreds of MB) and backup clutter so the archive stays a sane size, and
+    // awaits stream completion instead of returning mid-flight.
     if (url === "/snapclaw/export" && method === "GET") {
       res.writeHead(200, {
         "Content-Type": "application/gzip",
         "Content-Disposition": 'attachment; filename="snapclaw-backup.tar.gz"',
       });
-      await tar.create({ gzip: true, cwd: "/data" }, ["."]).pipe(res);
+      const archive = tar.create(
+        {
+          gzip: true,
+          cwd: "/data",
+          filter: (p: string) => {
+            if (p.includes(".openclaw/browser/")) return false; // Chromium cache
+            if (/\.bak-/.test(p)) return false;
+            if (/\.ephemeral\./.test(p)) return false;
+            return true;
+          },
+        },
+        ["."],
+      );
+      archive.pipe(res);
+      await new Promise<void>((resolve, reject) => {
+        archive.on("end", resolve);
+        archive.on("error", reject);
+        res.on("close", resolve);
+      });
       return;
     }
 
-    // Import backup
+    // Import backup. Stop the gateway first so we don't extract over files it
+    // has open, and stream straight from the request (no full in-memory buffer).
     if (url === "/snapclaw/import" && method === "POST") {
-      const body = await readBody(req);
-      await tar.extract({ cwd: "/data", gzip: true }, []).end(body);
-      if (isConfigured()) await gateway.restart();
+      await gateway.stop();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const extractor = tar.extract({ cwd: "/data", gzip: true });
+          extractor.on("close", resolve);
+          extractor.on("error", reject);
+          req.pipe(extractor);
+        });
+      } finally {
+        if (isConfigured()) await gateway.restart();
+      }
       return sendJson(res, { ok: true, output: "Backup imported." });
     }
 

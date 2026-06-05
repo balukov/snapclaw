@@ -13,9 +13,36 @@ import { ensurePersistentLinks, runCmd, sleep } from "./utils.js";
 
 let proc: ChildProcess | null = null;
 let starting: Promise<void> | null = null;
+// Set true only while stop()/restart() is intentionally tearing the gateway
+// down, so the crash watchdog doesn't fight a deliberate shutdown.
+let stopping = false;
+let restartTimer: ReturnType<typeof setTimeout> | null = null;
+let consecutiveCrashes = 0;
 
 export function isRunning(): boolean {
   return proc !== null && proc.exitCode === null;
+}
+
+// Auto-restart the gateway after an unexpected exit, with exponential backoff.
+// Without this, a crash leaves the bot silently down (Telegram polling stops)
+// until the next proxied HTTP request happens to call ensure().
+function scheduleRestart(): void {
+  if (restartTimer || starting || stopping) return;
+  consecutiveCrashes++;
+  const delay = Math.min(30_000, 1000 * 2 ** Math.min(consecutiveCrashes - 1, 5));
+  console.warn(
+    `[gateway] unexpected exit — auto-restart in ${delay}ms (crash #${consecutiveCrashes})`,
+  );
+  restartTimer = setTimeout(() => {
+    restartTimer = null;
+    if (isRunning() || stopping || !isConfigured()) return;
+    // Route through ensure() so a concurrent proxied-request start is deduped
+    // via the shared `starting` promise instead of double-spawning.
+    ensure().catch((err) => {
+      console.error("[gateway] auto-restart failed:", err);
+      scheduleRestart();
+    });
+  }, delay);
 }
 
 async function waitReady(timeoutMs = 20_000): Promise<boolean> {
@@ -23,7 +50,9 @@ async function waitReady(timeoutMs = 20_000): Promise<boolean> {
   while (Date.now() - start < timeoutMs) {
     try {
       const res = await fetch(`${GATEWAY_TARGET}/`, { method: "GET" });
-      if (res) return true;
+      // A 4xx (e.g. 401 auth-required) still means the listener is up and
+      // routing. Only a missing response or 5xx means "not ready yet".
+      if (res.status > 0 && res.status < 500) return true;
     } catch {}
     await sleep(300);
   }
@@ -264,7 +293,19 @@ async function reownPlugins(): Promise<void> {
   }
 }
 
+// Single guarded entry point: concurrent callers (a proxied request via
+// ensure(), a restart(), the crash watchdog) all share one in-flight start
+// instead of double-spawning the gateway.
 export async function start(): Promise<void> {
+  if (isRunning()) return;
+  if (starting) return starting;
+  starting = startInternal().finally(() => {
+    starting = null;
+  });
+  return starting;
+}
+
+async function startInternal(): Promise<void> {
   if (isRunning()) return;
   if (!isConfigured()) throw new Error("Not configured");
 
@@ -348,18 +389,27 @@ export async function start(): Promise<void> {
     },
   );
 
+  // Capture this spawn so a late exit event from an old process can't null out
+  // a newer one that a fast restart has already put in place.
+  const self = proc;
   proc.on("exit", (code, signal) => {
     console.log(`[gateway] exited code=${code} signal=${signal}`);
-    proc = null;
+    if (proc === self) proc = null;
+    if (stopping || !isConfigured()) return;
+    scheduleRestart();
   });
 
   proc.on("error", (err) => {
     console.error(`[gateway] error: ${err}`);
-    proc = null;
+    if (proc === self) proc = null;
   });
 
   const ready = await waitReady();
-  if (!ready) console.warn("[gateway] did not become ready in time");
+  if (ready) {
+    consecutiveCrashes = 0; // healthy boot resets the backoff
+  } else {
+    console.warn("[gateway] did not become ready in time");
+  }
 
   // Run browser doctor in the background so the actual launch failure (if any)
   // surfaces in Railway logs instead of being relayed through the agent as a
@@ -384,7 +434,17 @@ export async function start(): Promise<void> {
 }
 
 export async function stop(): Promise<void> {
-  if (!proc) return;
+  // Mark intentional shutdown so the exit handler doesn't schedule a restart,
+  // and cancel any restart the watchdog already queued.
+  stopping = true;
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
+  if (!proc) {
+    stopping = false;
+    return;
+  }
   const p = proc;
   proc = null;
   p.kill("SIGTERM");
@@ -399,6 +459,7 @@ export async function stop(): Promise<void> {
       resolve();
     });
   });
+  stopping = false;
 }
 
 export async function restart(): Promise<void> {
@@ -409,10 +470,5 @@ export async function restart(): Promise<void> {
 export async function ensure(): Promise<void> {
   if (isRunning()) return;
   if (!isConfigured()) return;
-  if (starting) return starting;
-
-  starting = start().finally(() => {
-    starting = null;
-  });
-  return starting;
+  return start();
 }
