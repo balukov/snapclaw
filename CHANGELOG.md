@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.17
+
+- **Faster boots and gateway restarts.** `gateway.ensureConfig()` ran ~15 separate `openclaw config set` subprocesses on every boot — each a full CLI cold-start, which is slow on Railway's constrained CPU. It now reads `openclaw.json` once, applies all settings in a single in-memory pass, and writes once (zero config subprocesses). It bails without writing if the config is unreadable, so it can't clobber a present-but-corrupt config.
+- **Removed the redundant post-setup config pass.** `applyPostSetupConfig()` re-set values that `ensureConfig()` already applies on the gateway start/restart every onboard path triggers (its `trustedProxies` was a superset; `gateway.bind`/`port` come from the `onboard`/`gateway run` flags). Deleted it and both call sites; the `BOOTSTRAP.md` cleanup moved into `ensureConfig()`.
+- Side fix: boolean gateway flags (`allowInsecureAuth`, `dangerouslyDisableDeviceAuth`) are now written as canonical JSON `true` instead of the bare string `"true"` the old non-`--json` `config set` produced.
+
 ## 0.9.16
 
 - **Gateway crash watchdog.** If the OpenClaw gateway exits unexpectedly, SnapClaw now auto-restarts it with exponential backoff (1s→30s, reset on a healthy boot). Previously a crash left the bot silently down — Telegram polling stopped — until the next proxied HTTP request happened to trigger a restart. Deliberate stops/restarts are exempt from the watchdog, and a late exit event from an old process can no longer null out a freshly-restarted one.

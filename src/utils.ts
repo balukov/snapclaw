@@ -49,6 +49,25 @@ function ensureSymlink(linkPath: string, target: string): void {
 export const sleep = (ms: number) =>
   new Promise((r) => setTimeout(r, ms));
 
+// Set a dotted-path key on a plain config object, creating intermediate
+// objects as needed — the in-memory equivalent of `openclaw config set a.b.c`.
+// Lets us apply many settings in one read-modify-write instead of one CLI
+// subprocess per key.
+export function deepSet(
+  obj: Record<string, unknown>,
+  dottedPath: string,
+  value: unknown,
+): void {
+  const parts = dottedPath.split(".");
+  let cur: Record<string, unknown> = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = parts[i];
+    if (typeof cur[k] !== "object" || cur[k] === null) cur[k] = {};
+    cur = cur[k] as Record<string, unknown>;
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
 // Keep only the newest `keep` entries in `dir` whose name starts with `prefix`,
 // deleting the rest. Used to stop timestamped config backups and ephemeral
 // directories from growing without bound on the persistent volume. Names carry

@@ -259,38 +259,12 @@ async function checkChannelsReady(): Promise<boolean> {
 
 // --- Auto-configure helpers ---
 
-async function applyPostSetupConfig(): Promise<void> {
-  await runCmd("openclaw", ["config", "set", "gateway.auth.mode", "token"]);
-  await runCmd("openclaw", ["config", "set", "gateway.auth.token", GATEWAY_TOKEN]);
-  await runCmd("openclaw", ["config", "set", "gateway.remote.token", GATEWAY_TOKEN]);
-  await runCmd("openclaw", ["config", "set", "gateway.bind", "loopback"]);
-  await runCmd("openclaw", ["config", "set", "gateway.port", String(INTERNAL_PORT)]);
-  await runCmd("openclaw", [
-    "config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]',
-  ]);
-
-  // (Bonjour disable + telegram poll-stall live in gateway.ensureConfig()
-  // so they apply on every boot, not just first-time onboarding.)
-
-  // Allow Control UI connections without device pairing
-  await runCmd("openclaw", [
-    "config", "set", "--json", "gateway.controlUi.dangerouslyDisableDeviceAuth", "true",
-  ]);
-  await runCmd("openclaw", [
-    "config", "set", "--json", "gateway.controlUi.allowInsecureAuth", "true",
-  ]);
-
-  // Clean up onboard boilerplate files
-  try { fs.unlinkSync(path.join(WORKSPACE_DIR, "BOOTSTRAP.md")); } catch {}
-
-  const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
-  if (domain) {
-    await runCmd("openclaw", [
-      "config", "set", "--json", "gateway.controlUi.allowedOrigins",
-      JSON.stringify([`https://${domain}`, `http://localhost:${PORT}`]),
-    ]);
-  }
-}
+// NOTE: there is no separate post-setup config pass. Every onboard path below
+// is followed by a gateway start/restart, and gateway.ensureConfig() applies
+// all SnapClaw-required settings there (on every boot), so doing it twice was
+// redundant. gateway.bind/port come from the `onboard` flags + the gateway-run
+// flags; the rest (auth tokens, trustedProxies, controlUi flags, allowedOrigins,
+// BOOTSTRAP.md cleanup) all live in ensureConfig().
 
 async function autoOnboard(): Promise<boolean> {
   console.log("[snapclaw] auto-onboarding...");
@@ -309,8 +283,7 @@ async function autoOnboard(): Promise<boolean> {
   ], 180_000);
 
   if (r.code === 0 && isConfigured()) {
-    console.log("[snapclaw] onboarding complete, applying config...");
-    await applyPostSetupConfig();
+    console.log("[snapclaw] onboarding complete (config applied on gateway start)");
     return true;
   }
   console.error("[snapclaw] onboarding failed:", redactSecrets(r.output));
@@ -692,7 +665,7 @@ async function handleRequest(
 
       const ok = codexSession.status === "done";
       if (ok) {
-        await applyPostSetupConfig();
+        // gateway.restart() -> ensureConfig() applies all required config.
         await gateway.restart();
       }
       const result = { ok, status: codexSession.status };

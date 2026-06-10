@@ -9,7 +9,7 @@ import {
   isConfigured,
   configPath,
 } from "./config.js";
-import { ensurePersistentLinks, runCmd, sleep } from "./utils.js";
+import { ensurePersistentLinks, runCmd, sleep, deepSet } from "./utils.js";
 
 let proc: ChildProcess | null = null;
 let starting: Promise<void> | null = null;
@@ -60,13 +60,20 @@ async function waitReady(timeoutMs = 20_000): Promise<boolean> {
 }
 
 async function ensureConfig(): Promise<void> {
-  // Always ensure gateway.mode=local
+  // Read the existing config up front so every SnapClaw-required setting can be
+  // applied in ONE in-memory read-modify-write below, then written once. This
+  // used to be ~15 separate `openclaw config set` subprocesses on every boot —
+  // each a full CLI cold-start, which is slow on Railway's constrained CPU.
+  // Bail (don't write) if the config is unreadable so we never clobber it.
+  let cfg: Record<string, unknown>;
   try {
-    const cfg = JSON.parse(fs.readFileSync(configPath(), "utf8"));
-    if (cfg?.gateway?.mode !== "local") {
-      await runCmd("openclaw", ["config", "set", "gateway.mode", "local"]);
-    }
-  } catch {}
+    cfg = JSON.parse(fs.readFileSync(configPath(), "utf8")) as Record<string, unknown>;
+  } catch (err) {
+    console.warn(
+      `[gateway] ensureConfig: config unreadable, skipping (${(err as Error).message})`,
+    );
+    return;
+  }
 
   // Collect all known origins for the Control UI
   const origins = new Set(["http://localhost:3000"]);
@@ -82,13 +89,6 @@ async function ensureConfig(): Promise<void> {
       origins.add(val.startsWith("http") ? val : `https://${val}`);
     }
   }
-  await runCmd("openclaw", [
-    "config",
-    "set",
-    "--json",
-    "gateway.controlUi.allowedOrigins",
-    JSON.stringify([...origins]),
-  ]);
 
   // Enable browser plugin with Playwright's bundled Chromium.
   // Scan PLAYWRIGHT_BROWSERS_PATH for the installed Chromium directory.
@@ -160,10 +160,15 @@ async function ensureConfig(): Promise<void> {
   };
   if (chromiumPath) browserConfig.executablePath = chromiumPath;
 
-  await runCmd("openclaw", [
-    "config", "set", "--json", "browser",
-    JSON.stringify(browserConfig),
-  ]);
+  // --- Apply every SnapClaw-required setting in one in-memory pass ---
+  // The comments explain *why* each value is forced; the values themselves are
+  // the canonical JSON types OpenClaw expects (booleans/arrays/objects), which
+  // also fixes a latent inconsistency where some of these were previously set
+  // as the bare string "true" via a non-`--json` `config set`.
+
+  deepSet(cfg, "gateway.mode", "local");
+  deepSet(cfg, "gateway.controlUi.allowedOrigins", [...origins]);
+  deepSet(cfg, "browser", browserConfig);
 
   // Use the `full` profile: unrestricted tool access. SnapClaw is a
   // single-operator personal agent, and the narrower profiles (coding,
@@ -172,54 +177,23 @@ async function ensureConfig(): Promise<void> {
   // values from prior configs don't override the profile — `tools.allow`
   // replaces the profile's list entirely (per OpenClaw docs), so a
   // lingering `["browser"]` would silently strip fs/exec/message tools.
-  await runCmd("openclaw", ["config", "set", "tools.profile", "full"]);
-  await runCmd("openclaw", [
-    "config", "set", "--json", "tools.allow", JSON.stringify([]),
-  ]);
-  await runCmd("openclaw", [
-    "config", "set", "--json", "tools.alsoAllow", JSON.stringify([]),
-  ]);
+  deepSet(cfg, "tools.profile", "full");
+  deepSet(cfg, "tools.allow", []);
+  deepSet(cfg, "tools.alsoAllow", []);
 
-  // Trust loopback proxy so Railway-forwarded requests are treated as local
-  await runCmd("openclaw", [
-    "config",
-    "set",
-    "--json",
-    "gateway.trustedProxies",
-    JSON.stringify(["127.0.0.1", "::1"]),
-  ]);
+  // Trust loopback proxy so Railway-forwarded requests are treated as local.
+  deepSet(cfg, "gateway.trustedProxies", ["127.0.0.1", "::1"]);
 
-  // Railway terminates TLS at the edge and proxies over HTTP internally.
-  // The gateway must allow token auth over the loopback HTTP connection.
-  await runCmd("openclaw", [
-    "config",
-    "set",
-    "gateway.controlUi.allowInsecureAuth",
-    "true",
-  ]);
+  // Railway terminates TLS at the edge and proxies over HTTP internally, so the
+  // gateway must allow token auth over the loopback HTTP connection.
+  deepSet(cfg, "gateway.controlUi.allowInsecureAuth", true);
+  // Disable device pairing so the Control UI connects without manual approval.
+  deepSet(cfg, "gateway.controlUi.dangerouslyDisableDeviceAuth", true);
 
-  // Disable device pairing so Control UI connects without manual approval
-  await runCmd("openclaw", [
-    "config",
-    "set",
-    "gateway.controlUi.dangerouslyDisableDeviceAuth",
-    "true",
-  ]);
-
-  // Sync gateway tokens
-  await runCmd("openclaw", ["config", "set", "gateway.auth.mode", "token"]);
-  await runCmd("openclaw", [
-    "config",
-    "set",
-    "gateway.auth.token",
-    GATEWAY_TOKEN,
-  ]);
-  await runCmd("openclaw", [
-    "config",
-    "set",
-    "gateway.remote.token",
-    GATEWAY_TOKEN,
-  ]);
+  // Sync gateway tokens.
+  deepSet(cfg, "gateway.auth.mode", "token");
+  deepSet(cfg, "gateway.auth.token", GATEWAY_TOKEN);
+  deepSet(cfg, "gateway.remote.token", GATEWAY_TOKEN);
 
   // plugins.allow MUST stay empty. v0.9.2 set this to `["codex"]` to silence
   // a "plugins.allow is empty; non-bundled plugins may auto-load" warning,
@@ -228,24 +202,31 @@ async function ensureConfig(): Promise<void> {
   // memory-core, etc. The bot stopped polling Telegram entirely, so messages
   // to the bot silently disappeared. Reset to [] on every boot so existing
   // deployments that picked up the bad config self-heal on the next restart.
-  await runCmd("openclaw", [
-    "config", "set", "--json", "plugins.allow", JSON.stringify([]),
-  ]);
+  deepSet(cfg, "plugins.allow", []);
 
   // Disable Bonjour: Railway has no LAN to advertise to, and the bundled
   // Bonjour plugin (default-enabled in OpenClaw 2026.4.24+) crashes the
   // gateway with "CIAO ANNOUNCEMENT CANCELLED" unhandled rejections when
   // mDNS multicast fails. Must run on every boot, not just onboarding,
   // so existing deploys pick up the disable on upgrade.
-  await runCmd("openclaw", [
-    "config", "set", "--json", "plugins.entries.bonjour.enabled", "false",
-  ]);
+  deepSet(cfg, "plugins.entries.bonjour.enabled", false);
 
   const tgPollStallMs = process.env.OPENCLAW_TELEGRAM_POLL_STALL_MS;
   if (tgPollStallMs && /^\d+$/.test(tgPollStallMs)) {
-    await runCmd("openclaw", [
-      "config", "set", "--json", "channels.telegram.pollingStallThresholdMs", tgPollStallMs,
-    ]);
+    deepSet(cfg, "channels.telegram.pollingStallThresholdMs", parseInt(tgPollStallMs, 10));
+  }
+
+  // Clean up onboard boilerplate (previously done in applyPostSetupConfig).
+  try {
+    fs.unlinkSync(`${WORKSPACE_DIR}/BOOTSTRAP.md`);
+  } catch {}
+
+  try {
+    fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2), "utf8");
+  } catch (err) {
+    console.error(
+      `[gateway] ensureConfig: failed to write config (${(err as Error).message})`,
+    );
   }
 }
 
