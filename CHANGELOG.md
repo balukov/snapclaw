@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.18
+
+- **Route-table refactor.** The ~390-line if/else chain in `handleRequest` is now 19 named handlers registered in two dispatch tables keyed by `"METHOD /path"` — `publicRoutes` (healthz, icon; no auth) and `setupRoutes` (16 routes behind the auth gate). Dispatch itself is ~55 lines: public lookup → login special-case → auth gate → setup lookup → 404/proxy fallback. Exact-match semantics are unchanged; handlers are now individually testable.
+- **Typed config.** New `OpenclawConfig` interface for the slice of `openclaw.json` SnapClaw reads (`channels.telegram.botToken`, `agents.defaults.model`, `auth.profiles`, `commands.ownerAllowFrom`, `plugins`); `readConfig()` returns it. Removed every `as Record<string, unknown>` cast in `checkChannelsReady` and the status handler.
+- **Login page externalized to `public/login.html`** (was an inline template string in `index.ts`), with the error message injected via placeholder — and now HTML-escaped, closing a latent injection vector in the login error path. Minimal inline fallback if the file is missing.
+- **Dead code removed:** unused `claw()` helper and `OPENCLAW_BIN` export.
+
 ## 0.9.17
 
 - **Faster boots and gateway restarts.** `gateway.ensureConfig()` ran ~15 separate `openclaw config set` subprocesses on every boot — each a full CLI cold-start, which is slow on Railway's constrained CPU. It now reads `openclaw.json` once, applies all settings in a single in-memory pass, and writes once (zero config subprocesses). It bails without writing if the config is unreadable, so it can't clobber a present-but-corrupt config.

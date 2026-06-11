@@ -68,8 +68,6 @@ export const INTERNAL_PORT = parseInt(
 
 export const GATEWAY_TARGET = `http://127.0.0.1:${INTERNAL_PORT}`;
 
-export const OPENCLAW_BIN = process.env.OPENCLAW_BIN?.trim() || "openclaw";
-
 // --- Gateway token ---
 
 function resolveToken(): string {
@@ -114,6 +112,36 @@ export const SESSION_SECRET = resolveSessionSecret();
 
 // --- Config helpers ---
 
+// A partial, deliberately loose view of openclaw.json — just the fields
+// SnapClaw reads. `[k: string]: unknown` index signatures keep it from
+// fighting the many other keys OpenClaw writes that we don't care about.
+export interface OpenclawModel {
+  name?: string;
+  id?: string;
+  model?: string;
+  slug?: string;
+}
+
+export interface OpenclawConfig {
+  gateway?: { mode?: string; [k: string]: unknown };
+  channels?: {
+    telegram?: { botToken?: string; [k: string]: unknown };
+    [k: string]: unknown;
+  };
+  agents?: {
+    defaults?: { model?: string | OpenclawModel; [k: string]: unknown };
+    [k: string]: unknown;
+  };
+  auth?: { profiles?: Record<string, unknown>; [k: string]: unknown };
+  commands?: { ownerAllowFrom?: unknown[]; [k: string]: unknown };
+  plugins?: {
+    entries?: Record<string, unknown>;
+    allow?: unknown[];
+    [k: string]: unknown;
+  };
+  [k: string]: unknown;
+}
+
 export function configPath(): string {
   const explicit = process.env.OPENCLAW_CONFIG_PATH?.trim();
   if (explicit) return explicit;
@@ -128,9 +156,9 @@ export function isConfigured(): boolean {
   }
 }
 
-export function readConfig(): Record<string, unknown> | null {
+export function readConfig(): OpenclawConfig | null {
   try {
-    return JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    return JSON.parse(fs.readFileSync(configPath(), "utf8")) as OpenclawConfig;
   } catch {
     return null;
   }

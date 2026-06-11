@@ -149,7 +149,3 @@ export function redactSecrets(text: string): string {
   }
   return out;
 }
-
-export function claw(...args: string[]): [string, string[]] {
-  return ["openclaw", args];
-}
