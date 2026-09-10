@@ -26,13 +26,6 @@ function resolveSetupPassword(): string {
   const env = process.env.SETUP_PASSWORD?.trim();
   if (env) return env;
 
-  if (process.env.SNAPCLAW_ALLOW_NO_AUTH === "1") {
-    console.warn(
-      "[snapclaw] SNAPCLAW_ALLOW_NO_AUTH=1 — admin panel is UNAUTHENTICATED. Local dev only.",
-    );
-    return "";
-  }
-
   const file = path.join(STATE_DIR, "setup-password");
   try {
     const existing = fs.readFileSync(file, "utf8").trim();
@@ -61,10 +54,7 @@ function resolveSetupPassword(): string {
 
 export const SETUP_PASSWORD = resolveSetupPassword();
 
-export const INTERNAL_PORT = parseInt(
-  process.env.INTERNAL_GATEWAY_PORT ?? "18789",
-  10,
-);
+export const INTERNAL_PORT = 18789;
 
 export const GATEWAY_TARGET = `http://127.0.0.1:${INTERNAL_PORT}`;
 
@@ -116,10 +106,7 @@ export const SESSION_SECRET = resolveSessionSecret();
 // SnapClaw reads. `[k: string]: unknown` index signatures keep it from
 // fighting the many other keys OpenClaw writes that we don't care about.
 export interface OpenclawModel {
-  name?: string;
-  id?: string;
-  model?: string;
-  slug?: string;
+  primary?: string;
 }
 
 export interface OpenclawConfig {
@@ -142,8 +129,6 @@ export interface OpenclawConfig {
 }
 
 export function configPath(): string {
-  const explicit = process.env.OPENCLAW_CONFIG_PATH?.trim();
-  if (explicit) return explicit;
   return path.join(STATE_DIR, "openclaw.json");
 }
 

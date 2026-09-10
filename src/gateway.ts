@@ -375,27 +375,6 @@ async function startInternal(): Promise<void> {
   } else {
     console.warn("[gateway] did not become ready in time");
   }
-
-  // Run browser doctor in the background so the actual launch failure (if any)
-  // surfaces in Railway logs instead of being relayed through the agent as a
-  // generic "Restart the OpenClaw gateway" timeout. Don't block startup.
-  void (async () => {
-    try {
-      const r = await runCmd(
-        "openclaw",
-        ["browser", "--browser-profile", "openclaw", "doctor"],
-        120_000,
-      );
-      const out = r.output.trim();
-      if (r.code === 0) {
-        console.log(`[gateway] browser doctor ok:\n${out}`);
-      } else {
-        console.error(`[gateway] browser doctor FAILED (code=${r.code}):\n${out}`);
-      }
-    } catch (err) {
-      console.error(`[gateway] browser doctor errored: ${(err as Error).message}`);
-    }
-  })();
 }
 
 export async function stop(): Promise<void> {

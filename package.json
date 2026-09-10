@@ -3,7 +3,9 @@
   "version": "0.11.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build:client": "esbuild src/client/setup.ts --bundle --minify --outfile=public/setup.js --format=iife --target=es2020",
     "build:server": "tsc",
@@ -14,11 +16,9 @@
   "dependencies": {
     "http-proxy": "^1.18.1",
     "node-pty": "^1.0.0",
-    "tar": "^7.5.4",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "tsx": "^4.19.0",
     "@types/http-proxy": "^1.17.15",
     "@types/node": "^24.0.0",
     "@types/ws": "^8.5.13",

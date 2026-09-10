@@ -87,7 +87,7 @@ Everything is stored on a Railway Volume at `/data` and survives redeploys:
 - credentials
 - skills
 - workspace
-- Obsidian Sync login and state (if you set it up; the panel's backup export includes this token, like the other credentials)
+- Obsidian Sync login and state (if you set it up)
 
 ## Obsidian Sync (optional)
 

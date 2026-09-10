@@ -66,7 +66,7 @@ RUN git config --system user.name "OpenClaw Agent" \
   && git config --system user.email "agent@openclaw.local"
 
 # Prepare data directories (Railway mounts volume at /data)
-RUN mkdir -p /data/.openclaw /data/workspace \
+RUN mkdir -p /data/.openclaw \
   && chown -R node:node /data
 
 COPY docker-entrypoint.sh /usr/local/bin/

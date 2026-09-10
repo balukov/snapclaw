@@ -1,12 +1,10 @@
 import http from "node:http";
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import httpProxy from "http-proxy";
 import { WebSocketServer, WebSocket } from "ws";
 import pty from "node-pty";
-import * as tar from "tar";
 
 import {
   PORT,
@@ -24,7 +22,7 @@ import {
 
 import * as gateway from "./gateway.js";
 import * as sync from "./sync.js";
-import { ensurePersistentLinks, runCmd, redactSecrets, sleep, pruneOldFiles } from "./utils.js";
+import { ensurePersistentLinks, runCmd, redactSecrets, sleep } from "./utils.js";
 import { countAuthProfiles, dashboardFragment } from "./upgrade.js";
 
 // --- Auth ---
@@ -88,7 +86,6 @@ function recordLoginFail(ip: string): void {
 // Verify a submitted password (constant-time) with per-IP lockout. Returns
 // false while locked out, even when the password is correct.
 function verifyPassword(ip: string, password: string): boolean {
-  if (!SETUP_PASSWORD) return true;
   if (lockoutRemaining(ip) > 0) return false;
   if (safeEqual(password, SETUP_PASSWORD)) {
     loginAttempts.delete(ip);
@@ -99,7 +96,6 @@ function verifyPassword(ip: string, password: string): boolean {
 }
 
 function checkAuth(req: http.IncomingMessage): boolean {
-  if (!SETUP_PASSWORD) return true;
   // Check session cookie
   const cookies = req.headers.cookie ?? "";
   const match = cookies.match(/snapclaw_session=([a-f0-9]+)/);
@@ -186,17 +182,9 @@ function setSecurityHeaders(
 
 const publicDir = new URL("../public", import.meta.url).pathname;
 
-// SnapClaw's own version, as opposed to cachedVersion, which is OpenClaw's.
-// Without this there is no way to tell which release a deployment is running,
-// which matters when a release fixes something operators need to pick up.
-const SNAPCLAW_VERSION = ((): string => {
-  try {
-    const raw = fs.readFileSync(new URL("../package.json", import.meta.url), "utf8");
-    return (JSON.parse(raw) as { version?: string }).version ?? "unknown";
-  } catch {
-    return "unknown";
-  }
-})();
+const SNAPCLAW_VERSION = (JSON.parse(
+  fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { version: string }).version;
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -256,7 +244,6 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 let channelsReady = false;
 let cachedVersion = "";
 let authCache: { value: boolean; until: number } | null = null;
-let authProbe: Promise<boolean> | null = null;
 
 const CHANNEL_RE = /telegram|discord|whatsapp/i;
 const CHANNELS_READY_FLAG = path.join(STATE_DIR, ".channels-ready");
@@ -270,61 +257,12 @@ function markChannelsReady(): void {
 }
 
 async function checkChannelsReady(): Promise<boolean> {
-  const cfg = readConfig() ?? {};
-  const hasBotToken = !!cfg.channels?.telegram?.botToken;
-
-  // Persistent flag set on successful pairing (survives restarts).
-  // Self-heal: if the flag is stale (set when telegram was configured,
-  // but the config has since been wiped — e.g. by a v0.9.8 re-auth that
-  // rewrote openclaw.json from scratch), clear it so the UI exposes the
-  // "add bot token" step again. Without this, an existing deployment
-  // that lost its telegram config is unrecoverable through the UI.
-  try {
-    if (fs.existsSync(CHANNELS_READY_FLAG)) {
-      if (!hasBotToken) {
-        console.log("[snapclaw] stale .channels-ready flag (no bot token in config); clearing");
-        try { fs.unlinkSync(CHANNELS_READY_FLAG); } catch {}
-        channelsReady = false;
-      } else {
-        channelsReady = true;
-        return true;
-      }
-    }
-  } catch {}
-
-  // Real pairing signal #1: a device was approved. The pairing handshake
-  // (user sends /start to the bot, bot responds with a code, user enters
-  // the code in setup) ends with an approved device entry.
-  try {
-    const r = await runCmd("openclaw", ["devices", "list", "--json"], 10_000);
-    if (r.code === 0) {
-      const parsed = JSON.parse(r.output);
-      const approved = (parsed.approved ?? parsed.devices ?? []) as unknown[];
-      if (Array.isArray(approved) && approved.length > 0) {
-        markChannelsReady();
-        return true;
-      }
-    }
-  } catch {}
-
-  // Real pairing signal #2: an operator account is bound via
-  // commands.ownerAllowFrom. Set during pairing when a Telegram user is
-  // promoted to operator. Does NOT get populated just by writing a bot
-  // token — so this is a trustworthy signal.
-  const ownerAllowFrom = cfg.commands?.ownerAllowFrom;
-  if (Array.isArray(ownerAllowFrom) && ownerAllowFrom.length > 0) {
-    markChannelsReady();
-    return true;
+  const hasBotToken = !!readConfig()?.channels?.telegram?.botToken;
+  channelsReady = hasBotToken && fs.existsSync(CHANNELS_READY_FLAG);
+  if (hasBotToken === false && fs.existsSync(CHANNELS_READY_FLAG)) {
+    try { fs.unlinkSync(CHANNELS_READY_FLAG); } catch {}
   }
-
-  // NOTE: the previous heuristics (plugins.entries.<channel> exists,
-  // channels.telegram has extra keys beyond botToken, `openclaw channels
-  // list` mentions a channel name) were all false positives — they fire
-  // as soon as a bot token is configured, before the user has ever
-  // messaged the bot. They made the setup UI report "Telegram bot is
-  // connected" while the user had received no pairing code, and the
-  // false state then persisted via CHANNELS_READY_FLAG. Removed.
-  return false;
+  return channelsReady;
 }
 
 // --- Auto-configure helpers ---
@@ -371,21 +309,6 @@ interface CodexSession {
 
 let codexSession: CodexSession | null = null;
 
-function resolveOpenclawDir(): string {
-  try {
-    const bin = fs.realpathSync(
-      execSync("which openclaw", { encoding: "utf8" }).trim(),
-    );
-    let dir = path.dirname(bin);
-    for (let i = 0; i < 5; i++) {
-      if (fs.existsSync(path.join(dir, "docs", "reference", "templates"))) return dir;
-      dir = path.dirname(dir);
-    }
-  } catch {}
-  return "/tmp";
-}
-
-const openclawDir = resolveOpenclawDir();
 
 function startCodexSession(): CodexSession {
   // Re-authentication vs first-time onboarding take different code paths.
@@ -430,7 +353,7 @@ function startCodexSession(): CodexSession {
     name: "xterm-256color",
     cols: 120,
     rows: 30,
-    cwd: openclawDir,
+    cwd: STATE_DIR,
     env: {
       ...process.env,
       OPENCLAW_STATE_DIR: STATE_DIR,
@@ -624,22 +547,10 @@ const handleLogin: Handler = async (req, res) => {
 
 async function codexConnected(): Promise<boolean> {
   if (authCache && Date.now() < authCache.until) return authCache.value;
-  if (!authProbe) {
-    authProbe = runCmd(
-      "openclaw",
-      ["models", "auth", "list", "--provider", "openai", "--json"],
-      15_000,
-    )
-      .then((r) => {
-        const value = r.code === 0 && countAuthProfiles(r.output) > 0;
-        authCache = { value, until: Date.now() + (value ? 60_000 : 5_000) };
-        return value;
-      })
-      .finally(() => {
-        authProbe = null;
-      });
-  }
-  return authProbe;
+  const r = await runCmd("openclaw", ["models", "auth", "list", "--provider", "openai", "--json"], 15_000);
+  const value = r.code === 0 && countAuthProfiles(r.output) > 0;
+  authCache = { value, until: Date.now() + (value ? 60_000 : 5_000) };
+  return value;
 }
 
 async function restartGateway(): Promise<void> {
@@ -651,14 +562,8 @@ const handleStatus: Handler = async (_req, res) => {
   if (!channelsReady) await checkChannelsReady();
   const cfg = readConfig() ?? {};
   const botTokenSet = !!cfg.channels?.telegram?.botToken;
-  // Extract a display name from agents.defaults.model (string or object).
   const rawModel = cfg.agents?.defaults?.model;
-  let model: string | null = null;
-  if (typeof rawModel === "string") {
-    model = rawModel;
-  } else if (rawModel) {
-    model = rawModel.name ?? rawModel.id ?? rawModel.model ?? rawModel.slug ?? null;
-  }
+  const model = typeof rawModel === "string" ? rawModel : rawModel?.primary ?? null;
   const hasAuth = isConfigured() && (await codexConnected());
   sendJson(res, {
     ok: true,
@@ -749,129 +654,13 @@ const handleTerminalToken: Handler = (_req, res) => {
   sendJson(res, { token });
 };
 
-const handleConfigRead: Handler = (_req, res) => {
-  const p = configPath();
-  let content = "";
-  let exists = false;
-  try {
-    content = fs.readFileSync(p, "utf8");
-    exists = true;
-  } catch {}
-  sendJson(res, { ok: true, path: p, exists, content });
-};
-
-const handleConfigWrite: Handler = async (req, res) => {
-  const body = await readJson(req);
-  const content = String(body.content ?? "");
-  if (content.length > 500_000) {
-    return sendJson(res, { ok: false, error: "Too large" }, 400);
-  }
-  const p = configPath();
-  // Backup, keeping only the most recent few so they don't pile up on the volume.
-  try {
-    if (fs.existsSync(p)) {
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      fs.copyFileSync(p, `${p}.bak-${ts}`);
-      pruneOldFiles(path.dirname(p), `${path.basename(p)}.bak-`, 10);
-    }
-  } catch {}
-  fs.writeFileSync(p, content, "utf8");
-  await restartGateway();
-  sendJson(res, { ok: true, path: p });
-};
-
-const handleOnboard: Handler = async (_req, res) => {
-  if (isConfigured()) {
-    return sendJson(res, { ok: true, output: "Already configured." });
-  }
-  const ok = await autoOnboard();
-  if (ok) {
-    await restartGateway();
-  }
-  sendJson(res, { ok, output: ok ? "Configured." : "Onboarding failed." });
-};
-
 const handleConsoleRun: Handler = async (req, res) => {
   const body = await readJson(req);
-  const cmd = String(body.cmd ?? "");
-  const arg = String(body.arg ?? "").trim();
-
-  const handlers: Record<string, () => Promise<string>> = {
-    "gateway.restart": async () => {
-      await restartGateway();
-      return "Gateway restarted.";
-    },
-    "gateway.stop": async () => {
-      await gateway.stop();
-      return "Gateway stopped.";
-    },
-    "gateway.start": async () => {
-      await gateway.start();
-      return "Gateway started.";
-    },
-  };
-
-  if (handlers[cmd]) {
-    const out = await handlers[cmd]();
-    return sendJson(res, { ok: true, output: out });
+  if (body.cmd !== "gateway.restart") {
+    return sendJson(res, { ok: false, error: "Unknown command" }, 400);
   }
-
-  // openclaw CLI commands
-  const cliMap: Record<string, string[]> = {
-    "openclaw.status": ["gateway", "status"],
-    "openclaw.health": ["gateway", "health"],
-    "openclaw.doctor": ["doctor", "--fix", "--non-interactive"],
-    "openclaw.version": ["--version"],
-    "openclaw.devices.list": ["devices", "list"],
-    "openclaw.plugins.list": ["plugins", "list"],
-  };
-
-  const cliArgs = cliMap[cmd];
-  if (cliArgs) {
-    const extra = arg ? [arg] : [];
-    const r = await runCmd("openclaw", [...cliArgs, ...extra]);
-    return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
-  }
-
-  if (cmd === "openclaw.logs.tail") {
-    const n = parseInt(arg) || 50;
-    const r = await runCmd("openclaw", ["logs", "--limit", String(n), "--plain"]);
-    return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
-  }
-
-  if (cmd === "openclaw.config.get") {
-    const cfg = readConfig();
-    if (!cfg) return sendJson(res, { ok: false, error: "openclaw.json is unreadable" }, 500);
-    let value: unknown = cfg;
-    for (const key of arg ? arg.split(".") : []) {
-      value = typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
-    }
-    return sendJson(res, { ok: true, output: redactSecrets(JSON.stringify(value ?? null, null, 2)) });
-  }
-
-  if (cmd === "openclaw.devices.approve" && arg) {
-    if (!/^[A-Za-z0-9_-]+$/.test(arg)) {
-      return sendJson(res, { ok: false, error: "Invalid ID" }, 400);
-    }
-    const r = await runCmd("openclaw", ["devices", "approve", arg]);
-    return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
-  }
-
-  if (cmd === "openclaw.plugins.enable" && arg) {
-    const r = await runCmd("openclaw", ["plugins", "enable", arg]);
-    return sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
-  }
-
-  sendJson(res, { ok: false, error: "Unknown command" }, 400);
-};
-
-// Manual override. For users whose bot is already paired via persistent
-// config state from a previous session — checkChannelsReady() can't always
-// detect that, so the UI gets stuck in "Waiting for pairing code..." while
-// the bot is actually fully functional. This endpoint just writes the flag.
-const handleMarkReady: Handler = (_req, res) => {
-  markChannelsReady();
-  sendJson(res, { ok: true });
+  await restartGateway();
+  sendJson(res, { ok: true, output: "Gateway restarted." });
 };
 
 const handleSyncEnsure: Handler = async (_req, res) => {
@@ -891,84 +680,6 @@ const handlePairingApprove: Handler = async (req, res) => {
     markChannelsReady();
   }
   sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
-};
-
-const handleDevicesPending: Handler = async (_req, res) => {
-  const r = await runCmd("openclaw", ["devices", "list", "--json"]);
-  let requestIds: string[] = [];
-  try {
-    const parsed = JSON.parse(r.output);
-    requestIds = (parsed.pending ?? [])
-      .map((d: Record<string, unknown>) => d.requestId)
-      .filter(Boolean) as string[];
-  } catch {}
-  sendJson(res, { ok: r.code === 0, requestIds, output: redactSecrets(r.output) });
-};
-
-const handleDevicesApprove: Handler = async (req, res) => {
-  const body = await readJson(req);
-  const id = String(body.requestId ?? "").trim();
-  if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) {
-    return sendJson(res, { ok: false, error: "Invalid ID" }, 400);
-  }
-  const r = await runCmd("openclaw", ["devices", "approve", id]);
-  sendJson(res, { ok: r.code === 0, output: redactSecrets(r.output) });
-};
-
-const handleReset: Handler = async (_req, res) => {
-  await gateway.stop();
-  try {
-    fs.unlinkSync(configPath());
-  } catch {}
-  sendJson(res, { ok: true, output: "Config deleted. Run setup again." });
-};
-
-// Export backup. Excludes the regenerable Chromium profile/cache (often
-// hundreds of MB) and backup clutter so the archive stays a sane size, and
-// awaits stream completion instead of returning mid-flight.
-const handleExport: Handler = async (_req, res) => {
-  res.writeHead(200, {
-    "Content-Type": "application/gzip",
-    "Content-Disposition": 'attachment; filename="snapclaw-backup.tar.gz"',
-  });
-  const archive = tar.create(
-    {
-      gzip: true,
-      cwd: "/data",
-      filter: (p: string) => {
-        if (p.includes(".openclaw/browser/")) return false; // Chromium cache
-        if (/\.bak-/.test(p)) return false;
-        if (/\.ephemeral\./.test(p)) return false;
-        return true;
-      },
-    },
-    ["."],
-  );
-  archive.pipe(res);
-  await new Promise<void>((resolve, reject) => {
-    archive.on("end", resolve);
-    archive.on("error", reject);
-    res.on("close", resolve);
-  });
-};
-
-// Import backup. Stop the gateway and sync client first so we don't extract
-// over files they have open, and stream straight from the request (no full
-// in-memory buffer).
-const handleImport: Handler = async (req, res) => {
-  await Promise.all([gateway.stop(), sync.stop()]);
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const extractor = tar.extract({ cwd: "/data", gzip: true });
-      extractor.on("close", resolve);
-      extractor.on("error", reject);
-      req.pipe(extractor);
-    });
-  } finally {
-    if (isConfigured()) await restartGateway();
-    await sync.ensure();
-  }
-  sendJson(res, { ok: true, output: "Backup imported." });
 };
 
 // --- Route tables ---
@@ -997,7 +708,6 @@ const staticFile = (name: string, type: string): Handler => (_req, res) =>
 
 const publicRoutes: Record<string, Handler> = {
   "GET /healthz": handleHealthz,
-  "GET /snapclaw/healthz": handleHealthz,
   "GET /snapclaw-icon.png": staticFile("snapclaw-icon.png", "image/png"),
   // The login page is served to unauthenticated visitors, so its stylesheet
   // has to be reachable without a session or the page renders unstyled.
@@ -1014,18 +724,9 @@ const setupRoutes: Record<string, Handler> = {
   "POST /snapclaw/api/codex/callback": handleCodexCallback,
   "POST /snapclaw/api/telegram/add": handleTelegramAdd,
   "GET /snapclaw/api/terminal-token": handleTerminalToken,
-  "GET /snapclaw/api/config/raw": handleConfigRead,
-  "POST /snapclaw/api/config/raw": handleConfigWrite,
-  "POST /snapclaw/api/onboard": handleOnboard,
   "POST /snapclaw/api/console/run": handleConsoleRun,
-  "POST /snapclaw/api/channels/mark-ready": handleMarkReady,
   "POST /snapclaw/api/sync/ensure": handleSyncEnsure,
   "POST /snapclaw/api/pairing/approve": handlePairingApprove,
-  "GET /snapclaw/api/devices/pending": handleDevicesPending,
-  "POST /snapclaw/api/devices/approve": handleDevicesApprove,
-  "POST /snapclaw/api/reset": handleReset,
-  "GET /snapclaw/export": handleExport,
-  "POST /snapclaw/import": handleImport,
 };
 
 // --- Request dispatch ---
