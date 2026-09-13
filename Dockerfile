@@ -41,6 +41,11 @@ RUN apt-get update \
     tini gosu \
   && rm -rf /var/lib/apt/lists/*
 
+RUN npm install -g --allow-scripts=better-sqlite3 obsidian-headless@0.0.14 \
+  && ob --version \
+  && node -e "require('/usr/local/lib/node_modules/obsidian-headless/node_modules/better-sqlite3')"
+ENV XDG_CONFIG_HOME=/data/.config
+
 # Install Playwright's bundled Chromium for full browser tool support
 # Per OpenClaw docs: must use bundled playwright-core CLI, NOT npx playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
@@ -61,7 +66,7 @@ RUN git config --system user.name "OpenClaw Agent" \
   && git config --system user.email "agent@openclaw.local"
 
 # Prepare data directories (Railway mounts volume at /data)
-RUN mkdir -p /data/.openclaw /data/workspace \
+RUN mkdir -p /data/.openclaw \
   && chown -R node:node /data
 
 COPY docker-entrypoint.sh /usr/local/bin/

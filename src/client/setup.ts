@@ -33,7 +33,7 @@ async function httpJson<T = Record<string, unknown>>(
 
 // --- Helpers ---
 
-function setBadge(el: HTMLElement, type: "success" | "pending", text: string): void {
+function setBadge(el: HTMLElement, type: "success" | "pending" | "muted", text: string): void {
   el.innerHTML = "";
   const badge = document.createElement("span");
   badge.className = `status-badge ${type}`;
@@ -64,6 +64,7 @@ interface StatusResponse {
   botTokenSet: boolean;
   model?: string | null;
   openclawVersion?: string;
+  obsidianSync?: "running" | "configured" | "not-configured";
 }
 
 let lastStatus: StatusResponse | null = null;
@@ -113,6 +114,15 @@ function restoreUI(s: StatusResponse): void {
     setBadge($("telegramStatus"), "pending", "Waiting for pairing code...");
     $("telegramPairing").classList.remove("hidden");
   }
+
+  renderSync(s.obsidianSync);
+}
+
+function renderSync(state: StatusResponse["obsidianSync"]): void {
+  const el = $("syncStatus");
+  if (state === "running") setBadge(el, "success", "Syncing");
+  else if (state === "configured") setBadge(el, "pending", "Configured, not running");
+  else setBadge(el, "muted", "Not set up");
 }
 
 // --- Codex OAuth ---
@@ -251,26 +261,6 @@ $("telegramConnectBtn").onclick = async () => {
   }
 };
 
-$("telegramMarkPairedBtn").onclick = async (e) => {
-  e.preventDefault();
-  // Manual override for users whose bot is already paired via persistent
-  // config state from a previous SnapClaw session — the heuristics in
-  // checkChannelsReady() can't always detect that, so the UI gets stuck.
-  // The user is the source of truth here: if they say it's paired, mark
-  // the flag and refresh the UI.
-  try {
-    await httpJson<{ ok: boolean }>("/snapclaw/api/channels/mark-ready", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    });
-    await refreshStatus();
-    location.reload();
-  } catch (err) {
-    showOutput($("telegramOutput"), `Error: ${err}`);
-  }
-};
-
 $("telegramApproveBtn").onclick = async () => {
   const code = ($("telegramPairingCode") as HTMLInputElement).value.trim().toUpperCase();
   if (!code) {
@@ -386,6 +376,27 @@ $("dashRestart").onclick = async () => {
     await refreshStatus();
   } catch (e) {
     out.textContent = `Error: ${e}`;
+  }
+};
+
+$("syncCheckBtn").onclick = async () => {
+  const btn = $("syncCheckBtn") as HTMLButtonElement;
+  setLoading(btn, true, "Checking...");
+  try {
+    const r = await httpJson<{ ok: boolean; state: StatusResponse["obsidianSync"] }>(
+      "/snapclaw/api/sync/ensure",
+      { method: "POST" },
+    );
+    renderSync(r.state);
+    try {
+      await new Promise((r) => setTimeout(r, 3000));
+      const s = await httpJson<StatusResponse>("/snapclaw/api/status");
+      renderSync(s.obsidianSync);
+    } catch {}
+  } catch (e) {
+    setBadge($("syncStatus"), "pending", `Error: ${e}`);
+  } finally {
+    setLoading(btn, false, "Check");
   }
 };
 

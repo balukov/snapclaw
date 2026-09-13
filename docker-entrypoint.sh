@@ -9,4 +9,6 @@ fi
 
 [ -f /data/.openclaw/openclaw.json ] && chown node:node /data/.openclaw/openclaw.json 2>/dev/null || true
 
+mkdir -p /data/.config && chown -R node:node /data/.config
+
 exec gosu node "$@"

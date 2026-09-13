@@ -87,6 +87,13 @@ Everything is stored on a Railway Volume at `/data` and survives redeploys:
 - credentials
 - skills
 - workspace
+- Obsidian Sync login and state (if you set it up)
+
+## Obsidian Sync (optional)
+
+The workspace can be an Obsidian vault: connect it to Obsidian Sync once over
+SSH and the same notes show up in Obsidian on your computer and phone. See
+[docs/OBSIDIAN-SYNC.md](docs/OBSIDIAN-SYNC.md).
 
 ## Why people like it
 
