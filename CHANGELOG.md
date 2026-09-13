@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1
+
+- **Existing Telegram pairings are recognised again.** 0.11.0 made the `.channels-ready` flag the only pairing signal, so a deployment paired before 0.11.0 (no flag on the volume) showed "Waiting for pairing code" forever, and the manual override was gone too. When the flag is missing but a bot token is set, SnapClaw asks `openclaw devices list` once and writes the flag if an approved device exists.
+- **Status probes are coalesced again.** Concurrent `/snapclaw/api/status` calls with an empty auth cache share one `openclaw models auth list` process instead of spawning one each.
+
 ## 0.11.0
 
 - **Obsidian Sync sidecar.** The image ships `obsidian-headless` 0.0.14. Connect the workspace to a remote vault once over SSH (`ob login`, `ob sync-setup`, see `docs/OBSIDIAN-SYNC.md`) and SnapClaw runs `ob sync --continuous` next to the gateway, restarting it with a 5s–60s backoff. The client's login token and sync state live in `/data/.config/obsidian-headless` (`XDG_CONFIG_HOME=/data/.config`), so they survive redeploys. Hidden folders such as `.git` and `memory/.dreams` are never uploaded.
