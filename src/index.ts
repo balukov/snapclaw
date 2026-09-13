@@ -24,6 +24,7 @@ import * as gateway from "./gateway.js";
 import * as sync from "./sync.js";
 import { ensurePersistentLinks, runCmd, redactSecrets, sleep } from "./utils.js";
 import { countAuthProfiles, dashboardFragment } from "./upgrade.js";
+import { telegramPairingCount } from "./pairing.js";
 
 // --- Auth ---
 
@@ -244,6 +245,7 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 let channelsReady = false;
 let cachedVersion = "";
 let authCache: { value: boolean; until: number } | null = null;
+let authProbe: Promise<boolean> | null = null;
 
 const CHANNEL_RE = /telegram|discord|whatsapp/i;
 const CHANNELS_READY_FLAG = path.join(STATE_DIR, ".channels-ready");
@@ -258,10 +260,16 @@ function markChannelsReady(): void {
 
 async function checkChannelsReady(): Promise<boolean> {
   const hasBotToken = !!readConfig()?.channels?.telegram?.botToken;
-  channelsReady = hasBotToken && fs.existsSync(CHANNELS_READY_FLAG);
-  if (hasBotToken === false && fs.existsSync(CHANNELS_READY_FLAG)) {
+  if (!hasBotToken) {
     try { fs.unlinkSync(CHANNELS_READY_FLAG); } catch {}
+    channelsReady = false;
+    return false;
   }
+  if (fs.existsSync(CHANNELS_READY_FLAG)) {
+    channelsReady = true;
+    return true;
+  }
+  if (telegramPairingCount(path.join(STATE_DIR, "state", "openclaw.sqlite")) > 0) markChannelsReady();
   return channelsReady;
 }
 
@@ -547,10 +555,16 @@ const handleLogin: Handler = async (req, res) => {
 
 async function codexConnected(): Promise<boolean> {
   if (authCache && Date.now() < authCache.until) return authCache.value;
-  const r = await runCmd("openclaw", ["models", "auth", "list", "--provider", "openai", "--json"], 15_000);
-  const value = r.code === 0 && countAuthProfiles(r.output) > 0;
-  authCache = { value, until: Date.now() + (value ? 60_000 : 5_000) };
-  return value;
+  authProbe ??= runCmd("openclaw", ["models", "auth", "list", "--provider", "openai", "--json"], 15_000)
+    .then((r) => {
+      const value = r.code === 0 && countAuthProfiles(r.output) > 0;
+      authCache = { value, until: Date.now() + (value ? 60_000 : 5_000) };
+      return value;
+    })
+    .finally(() => {
+      authProbe = null;
+    });
+  return authProbe;
 }
 
 async function restartGateway(): Promise<void> {
