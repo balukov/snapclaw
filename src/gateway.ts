@@ -169,6 +169,7 @@ async function ensureConfig(): Promise<void> {
   // as the bare string "true" via a non-`--json` `config set`.
 
   deepSet(cfg, "gateway.mode", "local");
+  deepSet(cfg, "agents.defaults.workspace", WORKSPACE_DIR);
   deepSet(cfg, "gateway.controlUi.allowedOrigins", [...origins]);
   deepSet(cfg, "browser", browserConfig);
 
