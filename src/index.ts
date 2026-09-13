@@ -23,7 +23,8 @@ import {
 import * as gateway from "./gateway.js";
 import * as sync from "./sync.js";
 import { ensurePersistentLinks, runCmd, redactSecrets, sleep } from "./utils.js";
-import { countAuthProfiles, dashboardFragment, parseJsonTail } from "./upgrade.js";
+import { countAuthProfiles, dashboardFragment } from "./upgrade.js";
+import { telegramPairingCount } from "./pairing.js";
 
 // --- Auth ---
 
@@ -268,10 +269,7 @@ async function checkChannelsReady(): Promise<boolean> {
     channelsReady = true;
     return true;
   }
-  const r = await runCmd("openclaw", ["devices", "list", "--json"], 10_000);
-  const parsed = parseJsonTail(r.output) as { approved?: unknown; devices?: unknown } | null;
-  const approved = parsed?.approved ?? parsed?.devices;
-  if (r.code === 0 && Array.isArray(approved) && approved.length > 0) markChannelsReady();
+  if (telegramPairingCount(path.join(STATE_DIR, "state", "openclaw.sqlite")) > 0) markChannelsReady();
   return channelsReady;
 }
 

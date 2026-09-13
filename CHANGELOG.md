@@ -2,7 +2,7 @@
 
 ## 0.11.1
 
-- **Existing Telegram pairings are recognised again.** 0.11.0 made the `.channels-ready` flag the only pairing signal, so a deployment paired before 0.11.0 (no flag on the volume) showed "Waiting for pairing code" forever, and the manual override was gone too. When the flag is missing but a bot token is set, SnapClaw asks `openclaw devices list` once and writes the flag if an approved device exists.
+- **Existing Telegram pairings are recognised again.** 0.11.0 made the `.channels-ready` flag the only pairing signal, so a deployment paired before 0.11.0 (no flag on the volume) showed "Waiting for pairing code" forever, and the manual override was gone too. When the flag is missing but a bot token is set, SnapClaw reads OpenClaw's own pairing table (`channel_pairing_allow_entries` in `state/openclaw.sqlite`, via Node's built-in `node:sqlite`) and writes the flag if a Telegram sender is allowed. The old `openclaw devices list` heuristic never matched the 9.2 output shape (`paired`, not `approved`), and a paired device is the CLI's own, not a Telegram user.
 - **Status probes are coalesced again.** Concurrent `/snapclaw/api/status` calls with an empty auth cache share one `openclaw models auth list` process instead of spawning one each.
 
 ## 0.11.0
