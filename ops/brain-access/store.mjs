@@ -3,6 +3,8 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 
 const hash = text => createHash('sha256').update(text).digest('hex');
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+const STATUSES = ['active', 'paused', 'done'];
 function safe(root, relative) {
   if (typeof relative !== 'string' || path.isAbsolute(relative) || relative.split('/').some(p => !p || p === '.' || p === '..')) throw Error('Invalid relative path');
   let target = root;
@@ -45,7 +47,7 @@ export function createStore(vault, state) {
         if (typeof args.title !== 'string' || !args.title.trim() || args.title.length > 200) throw Error('Goal title required (max 200 characters)');
         // Repeated start after reconnect is idempotent. A different goal gets a new note.
         if (!goal || goal.title !== args.title) {
-          goal = { id: randomUUID(), title: args.title, date: new Date().toISOString().slice(0, 10) };
+          goal = { id: randomUUID(), title: args.title, date: today(), status: 'active' };
           atomic(mapping, JSON.stringify(goal));
         }
       }
@@ -56,8 +58,16 @@ export function createStore(vault, state) {
       let text = fs.existsSync(file) ? read(file) : '';
       if (args.action === 'save') {
         if (args.revision !== hash(text)) throw Error('Session changed: read it again and merge');
-        if (typeof args.body !== 'string' || !args.body.trim() || args.body.length > 40_000) throw Error('Body required (max 40000 characters)');
-        text = `---\ndate: ${goal.date}\nupdated: ${new Date().toISOString()}\nagent: snapclaw\nsession: ${goal.id}\ntitle: ${JSON.stringify(goal.title)}\n---\n\n${args.body.trim()}\n`;
+        // Models tend to send back the whole note; keep one frontmatter block, the store's.
+        const body = typeof args.body === 'string' ? args.body.replace(/^\s*---\n[\s\S]*?\n---\n/, '').trim() : '';
+        if (!body || body.length > 40_000) throw Error('Body required (max 40000 characters)');
+        if (args.status !== undefined) {
+          if (!STATUSES.includes(args.status)) throw Error('status must be active, paused or done');
+          goal = { ...goal, status: args.status };
+          atomic(mapping, JSON.stringify(goal));
+        }
+        const front = { date: goal.date, updated: new Date().toISOString(), agent: 'snapclaw', session: goal.id, title: goal.title, status: goal.status || 'active' };
+        text = '---\n' + Object.entries(front).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('\n') + `\n---\n\n${body}\n`;
         atomic(file, text);
       } else if (!['start', 'read'].includes(args.action)) throw Error('Unknown session action');
       return { path: relative, title: goal.title, text, revision: hash(text) };
