@@ -11,4 +11,9 @@ fi
 
 mkdir -p /data/.config && chown -R node:node /data/.config
 
+if [ -f /data/.openclaw/brain-access-enabled ]; then
+  sh /snapclaw/ops/brain-access/setup-ssh.sh
+  gosu node node /snapclaw/ops/brain-access/configure.mjs --apply
+fi
+
 exec gosu node "$@"

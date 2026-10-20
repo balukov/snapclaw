@@ -38,7 +38,7 @@ USER root
 
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    tini gosu \
+    tini gosu openssh-server \
   && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g --allow-scripts=better-sqlite3 obsidian-headless@0.0.14 \
@@ -70,6 +70,7 @@ RUN mkdir -p /data/.openclaw \
   && chown -R node:node /data
 
 COPY docker-entrypoint.sh /usr/local/bin/
+COPY ops/brain-access /snapclaw/ops/brain-access
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

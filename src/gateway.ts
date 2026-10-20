@@ -144,12 +144,6 @@ async function ensureConfig(): Promise<void> {
     noSandbox: true,
     defaultProfile: "openclaw",
     snapshotDefaults: { mode: "efficient" },
-    // OpenClaw 2026.4.24+ lazy-launches Chromium on first browser tool use.
-    // Defaults (15s launch + 8s CDP-ready) are tight on Railway's slow-IO
-    // volume mount and constrained CPU; bump generously so cold first-run
-    // doesn't surface as "Timeout. Restart the OpenClaw gateway".
-    localLaunchTimeoutMs: 90000,
-    localCdpReadyTimeoutMs: 30000,
     extraArgs: [
       "--disable-dev-shm-usage",
       "--disable-gpu",
@@ -342,8 +336,6 @@ async function startInternal(): Promise<void> {
       String(INTERNAL_PORT),
       "--auth",
       "token",
-      "--token",
-      GATEWAY_TOKEN,
     ],
     {
       stdio: "inherit",

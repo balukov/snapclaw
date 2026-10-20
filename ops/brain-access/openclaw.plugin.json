@@ -1,0 +1,9 @@
+{
+  "id": "brain-access",
+  "name": "Brain access",
+  "contracts": { "tools": ["brain_wiki", "brain_session"] },
+  "configSchema": {
+    "type": "object", "additionalProperties": false, "required": ["vault", "state"],
+    "properties": { "vault": { "type": "string" }, "state": { "type": "string" } }
+  }
+}
