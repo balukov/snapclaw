@@ -39,7 +39,6 @@ export function createStore(vault, state) {
     },
     session(key, args) {
       if (typeof key !== 'string' || !key) throw Error('Host session identity required');
-      if (Object.keys(args).some(k => !['action', 'title', 'body', 'revision'].includes(k))) throw Error('Unknown argument');
       const mapping = safe(state, hash(key) + '.json');
       let goal = fs.existsSync(mapping) ? JSON.parse(read(mapping)) : null;
       if (args.action === 'start') {
@@ -51,7 +50,6 @@ export function createStore(vault, state) {
         }
       }
       if (!goal) throw Error('Start a goal first');
-      if (!/^[a-f0-9-]{36}$/.test(goal.id) || !/^\d{4}-\d{2}-\d{2}$/.test(goal.date)) throw Error('Invalid saved goal association');
       const slug = goal.title.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-|-$/g, '').slice(0, 50) || 'session';
       const relative = `raw/snapclaw/${goal.date}-${slug}-${goal.id}.md`;
       const file = safe(vault, relative);

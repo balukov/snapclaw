@@ -1,9 +1,11 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 export const daytimeTools = ['exec', 'process', 'read', 'write', 'edit', 'apply_patch',
-  'web_search', 'web_fetch', 'progress_card', 'ask_user', 'brain_wiki', 'brain_session'];
+  'web_search', 'progress_card', 'ask_user', 'brain_wiki', 'brain_session'];
+// Dreaming ingests notes written by the sandboxed daytime agent, so it gets file tools and
+// exec for hashing only: no browser, web, messaging, delegation or admin surface.
+export const dreamingTools = ['exec', 'process', 'read', 'write', 'edit', 'apply_patch'];
+const pluginDir = '/snapclaw/ops/brain-access';
 
 export function configure(cfg, root = '/data/.openclaw') {
   cfg.agents ??= {};
@@ -21,12 +23,13 @@ export function configure(cfg, root = '/data/.openclaw') {
     exec: { host: 'sandbox' } };
   cfg.agents.entries['brain-dreaming'] = {
     ...cfg.agents.entries['brain-dreaming'], workspace: root + '/workspace', sandbox: { mode: 'off' },
+    tools: { allow: dreamingTools, elevated: { enabled: false } },
   };
   cfg.tools ??= {};
   cfg.tools.sandbox = { ...cfg.tools.sandbox, tools: { allow: daytimeTools, deny: [] } };
   cfg.plugins ??= {};
   cfg.plugins.load ??= {};
-  cfg.plugins.load.paths = [...new Set([...(cfg.plugins.load.paths || []), root + '/extensions/brain-access'])];
+  cfg.plugins.load.paths = [...new Set([...(cfg.plugins.load.paths || []).filter(p => p !== root + '/extensions/brain-access'), pluginDir])];
   cfg.plugins.entries ??= {};
   cfg.plugins.entries['brain-access'] = { enabled: true, config: {
     vault: root + '/workspace', state: root + '/brain-sessions',
@@ -42,12 +45,6 @@ if (process.argv[2] === '--apply') {
     fs.copyFileSync(root + '/workspace/' + name, seed + '/' + name);
   }
   fs.appendFileSync(seed + '/AGENTS.md', '\n\n## SnapClaw memory tools\n\nYou are the daytime snapclaw agent. Your shell workspace is isolated from Brain. Read wiki with brain_wiki (start with index.md). Follow save-session after meaningful results: brain_session start with the goal title, read, then save the merged body with its revision. The host retains the association across restarts. Call read to recover the current goal; do not start a different goal merely because the application restarted. Do not save via shell files: only brain_session writes the synchronized Brain note. When a tool is unavailable, report the limitation; do not try to bypass it.\n');
-  const plugin = root + '/extensions/brain-access';
-  fs.mkdirSync(plugin, { recursive: true });
-  const source = path.dirname(fileURLToPath(import.meta.url));
-  for (const name of ['store.mjs', 'index.mjs', 'openclaw.plugin.json', 'package.json']) {
-    fs.copyFileSync(source + '/' + name, plugin + '/' + name);
-  }
   const file = root + '/openclaw.json';
   const cfg = configure(JSON.parse(fs.readFileSync(file, 'utf8')), root);
   fs.writeFileSync(file + '.brain-tmp', JSON.stringify(cfg, null, 2), { mode: 0o600 });

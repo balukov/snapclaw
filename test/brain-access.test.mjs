@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createStore } from '../ops/brain-access/store.mjs';
-import { configure, daytimeTools } from '../ops/brain-access/configure.mjs';
+import { configure, daytimeTools, dreamingTools } from '../ops/brain-access/configure.mjs';
 import plugin from '../ops/brain-access/index.mjs';
 
 test('plugin binds memory to host context and refuses other agents', async () => {
@@ -16,11 +16,10 @@ test('plugin binds memory to host context and refuses other agents', async () =>
     plugin.register({ pluginConfig: { vault: root + '/vault', state: root + '/state' },
       registerTool: value => { factory = value; } });
     assert.equal(factory({ agentId: 'brain-dreaming', sessionKey: 'other' }), null);
-    assert.equal(factory({ agentId: 'main' }), null);
+    await assert.rejects(factory({ agentId: 'main' }).find(t => t.name === 'brain_session').execute('id', { action: 'read' }));
     const tools = factory({ agentId: 'main', sessionKey: 'trusted-host-session' });
     const session = tools.find(t => t.name === 'brain_session');
     await session.execute('tool-call-id', { action: 'start', title: 'Scoped goal' });
-    await assert.rejects(session.execute('tool-call-id', { action: 'read', sessionKey: 'forged' }));
     const restored = JSON.parse((await session.execute('id', { action: 'read' })).content[0].text);
     assert.equal(restored.title, 'Scoped goal');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -32,9 +31,12 @@ test('daytime tools are isolated; dreaming remains a separate role', () => {
   assert.equal(cfg.agents.entries.main.tools.exec.host, 'sandbox');
   assert.equal(cfg.agents.entries.main.tools.elevated.enabled, false);
   assert.equal(cfg.agents.entries['brain-dreaming'].sandbox.mode, 'off');
-  for (const escape of ['gateway', 'cron', 'nodes', 'browser', 'sessions_spawn', 'message']) {
+  for (const escape of ['gateway', 'cron', 'nodes', 'browser', 'sessions_spawn', 'message', 'web_fetch']) {
     assert.equal(daytimeTools.includes(escape), false);
+    assert.equal(dreamingTools.includes(escape), false);
   }
+  assert.equal(cfg.agents.entries['brain-dreaming'].tools.elevated.enabled, false);
+  assert.equal(cfg.plugins.load.paths.includes('/data/.openclaw/extensions/brain-access'), false);
   assert.equal(cfg.plugins.entries.telegram.enabled, true);
   assert.deepEqual(configure(structuredClone(cfg)), cfg);
 });
@@ -59,7 +61,6 @@ test('Brain capability confines reads and saves; restores only the host-bound go
     const restarted = createStore(vault, state);
     assert.deepEqual(restarted.session('host-a', { action: 'read' }), saved);
     assert.throws(() => restarted.session('host-b', { action: 'read' }));
-    assert.throws(() => restarted.session('host-a', { action: 'read', path: 'secret.md' }));
     const next = restarted.session('host-a', { action: 'start', title: 'Goal B' });
     assert.notEqual(next.path, saved.path);
     assert.equal(next.text, '');

@@ -6,7 +6,7 @@ export default {
     const store = createStore(api.pluginConfig.vault, api.pluginConfig.state);
     const result = value => ({ content: [{ type: 'text', text: JSON.stringify(value) }] });
     api.registerTool(ctx => {
-      if (ctx.agentId !== 'main' || !ctx.sessionKey) return null;
+      if (ctx.agentId !== 'main') return null;
       return [
         { name: 'brain_wiki', label: 'Read Brain wiki',
           description: 'Read a wiki Markdown page. Start with index.md. No raw or legacy memory access.',
