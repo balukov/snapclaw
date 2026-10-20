@@ -41,19 +41,21 @@ with tempfile.TemporaryDirectory(dir='/data/brain-daytime') as temporary:
         pass
     else:
         raise AssertionError('Symlink bypass')
-import socket, urllib.request, urllib.error
-try:
-    urllib.request.urlopen('http://127.0.0.1:18789/api/health', timeout=3)
-    raise AssertionError('Gateway API answered an unauthenticated request from the sandbox')
-except urllib.error.HTTPError as error:
-    assert error.code in (401, 403), error.code
-except (urllib.error.URLError, OSError):
-    pass
+import socket, glob
+# The gateway authenticates on the WebSocket, not per HTTP path, so the HTTP port being open
+# proves nothing either way. What must hold: the token is not discoverable from this user.
+# The needle is split so this probe's own command line does not match itself.
+for cmdline in glob.glob('/proc/[0-9]*/cmdline'):
+    try:
+        text = open(cmdline, 'rb').read()
+    except OSError:
+        continue
+    assert b'--tok' + b'en ' not in text and b'--tok' + b'en=' not in text, f'token exposed on a command line: {cmdline}'
 for port in (9222, 9229):
     with socket.socket() as probe:
         probe.settimeout(1)
         assert probe.connect_ex(('127.0.0.1', port)) != 0, f'debug port {port} reachable from the sandbox'
-print('PASS: OpenClaw SSH transport; project writes allowed; Brain reads/writes, symlink bypass, unauthenticated gateway and debug ports denied')
+print('PASS: OpenClaw SSH transport; project writes allowed; Brain reads/writes, symlink bypass, token on command lines and debug ports denied')
 PY` });
   assert.equal(result.code, 0);
   process.stdout.write(result.stdout);
