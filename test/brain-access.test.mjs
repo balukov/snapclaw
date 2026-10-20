@@ -56,11 +56,16 @@ test('Brain capability confines reads and saves; restores only the host-bound go
     fs.linkSync(path.join(vault, 'secret.md'), path.join(vault, 'wiki/hard.md'));
     assert.throws(() => store.wiki('hard.md'));
     const initial = store.session('host-a', { action: 'start', title: 'Goal A' });
-    const saved = store.session('host-a', { action: 'save', revision: initial.revision, body: 'Decision A' });
+    const saved = store.session('host-a', { action: 'save', revision: initial.revision, body: `${initial.text}---\ndate: "x"\n---\n\nDecision A` });
+    assert.equal((saved.text.match(/^---$/gm) || []).length, 2, 'exactly one frontmatter block');
+    assert.match(saved.text, /^date: "\d{4}-\d{2}-\d{2}"\nupdated: ".+"\nagent: "snapclaw"\nsession: ".+"\ntitle: "Goal A"\nstatus: "active"\n---/m);
+    assert.throws(() => store.session('host-a', { action: 'save', revision: saved.revision, body: 'x', status: 'archived' }));
     assert.throws(() => store.session('host-a', { action: 'save', revision: initial.revision, body: 'Lost update' }));
     const restarted = createStore(vault, state);
     assert.deepEqual(restarted.session('host-a', { action: 'read' }), saved);
     assert.throws(() => restarted.session('host-b', { action: 'read' }));
+    const paused = restarted.session('host-a', { action: 'save', revision: saved.revision, body: 'Decision A', status: 'paused' });
+    assert.match(paused.text, /status: "paused"/);
     const next = restarted.session('host-a', { action: 'start', title: 'Goal B' });
     assert.notEqual(next.path, saved.path);
     assert.equal(next.text, '');
