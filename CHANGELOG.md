@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`web_search` works for the sandboxed daytime agent.** Its tool allowlist leaves it with the managed `web_search` tool, which had no provider (`web_search is disabled or no provider is available`). SnapClaw now defaults `tools.web.search.provider` to `codex` (Codex Hosted Search through the existing ChatGPT sign-in, no API key) and keeps any provider you set yourself.
+
 ## 0.11.1
 
 - **Existing Telegram pairings are recognised again.** 0.11.0 made the `.channels-ready` flag the only pairing signal, so a deployment paired before 0.11.0 (no flag on the volume) showed "Waiting for pairing code" forever, and the manual override was gone too. When the flag is missing but a bot token is set, SnapClaw reads OpenClaw's own pairing table (`channel_pairing_allow_entries` in `state/openclaw.sqlite`, via Node's built-in `node:sqlite`) and writes the flag if a Telegram sender is allowed. The old `openclaw devices list` heuristic never matched the 9.2 output shape (`paired`, not `approved`), and a paired device is the CLI's own, not a Telegram user.

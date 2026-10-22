@@ -15,7 +15,12 @@ the same association. Writes require the revision returned by the last read.
 The worker can edit projects in its own workspace, but does not inherit host
 Git credentials. The explicit tool allowlist excludes host browser, arbitrary
 message attachments, administration, other-agent delegation, and legacy memory
-tools. Normal channel replies remain available. Add capabilities only with an
+tools. Normal channel replies remain available. `web_search` runs on the
+gateway, not in the sandbox: SnapClaw defaults `tools.web.search.provider` to
+`codex` (Codex Hosted Search through the ChatGPT sign-in), so no search key is
+needed and none is visible to `brain-daytime`. A key-backed provider set by
+hand stays in the gateway environment or `openclaw.json`, both private to the
+gateway identity. Add capabilities only with an
 equivalent isolation boundary, never by exposing host exec or the whole vault.
 
 `brain-dreaming` is a separate maintenance agent with the original Brain
