@@ -1,6 +1,7 @@
 // Run as node on the gateway host. No model calls and no changes to Brain.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import net from 'node:net';
 import {
   createSshSandboxSessionFromSettings, runSshSandboxCommand, disposeSshSandboxSession,
 } from '/app/dist/plugin-sdk/sandbox.js';
@@ -14,6 +15,11 @@ const settings = {
 for (const file of ['/data/.openclaw/workspace/wiki/index.md', '/data/.openclaw/openclaw.json']) {
   assert.equal(fs.statSync(file).isFile(), true);
 }
+// A refused port is the first thing to rule out: sshd is the only process on 2223.
+await new Promise((resolve, reject) => {
+  const probe = net.connect(2223, '127.0.0.1', () => { probe.destroy(); resolve(); });
+  probe.on('error', e => reject(new Error(`nothing listens on 127.0.0.1:2223 (${e.code}); run setup-ssh.sh as root`)));
+});
 const session = await createSshSandboxSessionFromSettings(settings);
 try {
   const result = await runSshSandboxCommand({ session, remoteCommand: `python3 - <<'PY'

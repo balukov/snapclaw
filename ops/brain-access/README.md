@@ -50,8 +50,18 @@ the original gateway/Sync identity still owns them. Do not delete session notes.
 
 - `node --test test/brain-access.test.mjs`: scope, traversal, symlinks, hardlinks,
   stale revisions, session identity, restart, goal switch, and role policy.
-- `node ops/brain-access/check-ssh.mjs` on the gateway as node: the installed
-  OpenClaw transport, project writes, denied Brain reads/writes and symlink bypass.
+- `node ops/brain-access/check-ssh.mjs` on the gateway as node: a listener on
+  2223, the installed OpenClaw transport, project writes, denied Brain
+  reads/writes and symlink bypass.
+- sshd runs under a restart loop started by `setup-ssh.sh` (`sshd -D -e`, loop pid
+  in `/run/sshd-brain-loop.pid`, sshd pid in `/run/sshd-brain.pid`). If sshd
+  dies, the loop restarts it after 2s and logs `[brain-access] sshd exited`
+  to the container log; `Connection refused` on 2223 should last seconds, not
+  until a redeploy. Rerunning `setup-ssh.sh` as root is still safe: it leaves a
+  live loop alone.
+- If the startup marker is missing while `openclaw.json` still has the SSH
+  sandbox, the entrypoint logs a `[brain-access] WARNING` and starts no sshd.
+  Restore the marker or roll back, do not leave the agent in that state.
 - `npm test`: wrapper regressions.
 
 The sync process and owner remain trusted. Revision comparison rejects changes
