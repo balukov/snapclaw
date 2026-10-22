@@ -127,6 +127,13 @@ Open it from the panel's **Open Web UI** button once per browser. OpenClaw pairs
 browsers now; the button hands yours an owner credential so there is nothing to
 approve.
 
+### Web search says "no provider is available"
+Redeploy. SnapClaw sets `tools.web.search.provider` to `codex` on boot unless you
+chose a provider yourself: searches run through your ChatGPT sign-in, no extra
+key. To use another provider (Brave, Tavily, …), set `tools.web.search.provider`
+in the config editor and add its key as a Railway variable (for example
+`BRAVE_API_KEY`); SnapClaw never overwrites a provider you set.
+
 ## Credits
 
 - [OpenClaw](https://openclaw.ai)

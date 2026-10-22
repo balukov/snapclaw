@@ -202,6 +202,17 @@ async function ensureConfig(): Promise<void> {
   // so existing deploys pick up the disable on upgrade.
   deepSet(cfg, "plugins.entries.bonjour.enabled", false);
 
+  // The daytime agent's tool allowlist (ops/brain-access) strips Codex's native
+  // hosted search, so its searches go through the managed `web_search` tool,
+  // which needs a provider. "codex" is Codex Hosted Search: a bounded Codex
+  // worker on the gateway using the existing ChatGPT sign-in, no API key, and
+  // nothing for the sandbox user to read. Default only: a provider set by hand
+  // (e.g. "brave" with BRAVE_API_KEY) is kept.
+  const webSearch = (cfg.tools as { web?: { search?: { provider?: unknown } } } | undefined)?.web?.search;
+  if (webSearch?.provider === undefined) {
+    deepSet(cfg, "tools.web.search.provider", "codex");
+  }
+
   const memory = cfg.memory as { search?: { provider?: unknown } | null } | undefined;
   if (memory?.search?.provider === undefined) {
     deepSet(cfg, "memory.search.provider", "none");
