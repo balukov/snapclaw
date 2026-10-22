@@ -40,6 +40,17 @@ awk '{print "[127.0.0.1]:2223 " $1 " " $2}' "$host.pub" > /data/.openclaw/brain-
 chown node:node /data/.openclaw/brain-access-ssh/known_hosts
 chmod 600 /data/.openclaw/brain-access-ssh/known_hosts
 /usr/sbin/sshd -t -f /etc/ssh/sshd_config_brain
-if [ ! -f /run/sshd-brain.pid ] || ! kill -0 "$(cat /run/sshd-brain.pid)" 2>/dev/null; then
-  /usr/sbin/sshd -f /etc/ssh/sshd_config_brain
+# Keep sshd under a restart loop: nothing else in the container supervises it, and
+# without a listener on 2223 the daytime agent loses exec/read/write until a redeploy.
+# ponytail: shell loop, not a supervisor; sshd -D exits when the daemon dies, -e sends its log to the container log.
+loop=/run/sshd-brain-loop.pid
+if [ ! -f "$loop" ] || ! kill -0 "$(cat "$loop")" 2>/dev/null; then
+  (
+    while :; do
+      /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config_brain
+      echo "[brain-access] sshd exited (status $?), restarting in 2s" >&2
+      sleep 2
+    done
+  ) &
+  echo $! > "$loop"
 fi

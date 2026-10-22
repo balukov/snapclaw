@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The Brain-access sshd is restarted when it dies.** `setup-ssh.sh` now runs it under a restart loop (`sshd -D -e`) instead of a one-shot daemon, so a dead sshd no longer leaves the daytime agent's `exec`/`read`/`write` with `Connection refused` on 127.0.0.1:2223 until the next redeploy; sshd's own log goes to the container log. `check-ssh.mjs` names a missing listener before trying SSH, and the entrypoint warns when the `brain-access-enabled` marker is gone but `openclaw.json` still sandboxes the main agent over SSH.
+
 ## 0.11.1
 
 - **Existing Telegram pairings are recognised again.** 0.11.0 made the `.channels-ready` flag the only pairing signal, so a deployment paired before 0.11.0 (no flag on the volume) showed "Waiting for pairing code" forever, and the manual override was gone too. When the flag is missing but a bot token is set, SnapClaw reads OpenClaw's own pairing table (`channel_pairing_allow_entries` in `state/openclaw.sqlite`, via Node's built-in `node:sqlite`) and writes the flag if a Telegram sender is allowed. The old `openclaw devices list` heuristic never matched the 9.2 output shape (`paired`, not `approved`), and a paired device is the CLI's own, not a Telegram user.
