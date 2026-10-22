@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **`web_search` works for the sandboxed daytime agent.** Its tool allowlist leaves it with the managed `web_search` tool, which had no provider (`web_search is disabled or no provider is available`). SnapClaw now defaults `tools.web.search.provider` to `codex` (Codex Hosted Search through the existing ChatGPT sign-in, no API key) and keeps any provider you set yourself.
+- **The Brain-access sshd is restarted when it dies.** `setup-ssh.sh` now runs it under a restart loop (`sshd -D -e`) instead of a one-shot daemon, so a dead sshd no longer leaves the daytime agent's `exec`/`read`/`write` with `Connection refused` on 127.0.0.1:2223 until the next redeploy; sshd's own log goes to the container log. `check-ssh.mjs` names a missing listener before trying SSH, and the entrypoint warns when the `brain-access-enabled` marker is gone but `openclaw.json` still sandboxes the main agent over SSH.
 
 ## 0.11.1
 
