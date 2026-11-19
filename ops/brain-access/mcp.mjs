@@ -55,11 +55,10 @@ export function createMcp({ vault, state, secret, isOwner }) {
     const claims = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
     return claims.t === t && claims.exp > Date.now() / 1000 ? claims : null;
   };
-  const origin = req => `https://${req.headers.host}`;
   const pair = () => ({ access_token: issue('access'), token_type: 'Bearer', expires_in: TTL.access, refresh_token: issue('refresh') });
 
-  const authorizeForm = (q, error = '') => page('Brain connector', `<h1>Connect Claude to Brain</h1>
-<p>Claude will read <code>wiki/</code> and write session notes to <code>raw/${AGENT}/</code>.</p>${error ? `<p style="color:#b00">${esc(error)}</p>` : ''}
+  const authorizeForm = q => page('Brain connector', `<h1>Connect Claude to Brain</h1>
+<p>Claude will read <code>wiki/</code> and write session notes to <code>raw/${AGENT}/</code>.</p>
 <form method="post" action="/oauth/authorize">${['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'response_type']
     .map(k => `<input type="hidden" name="${k}" value="${esc(q.get(k) ?? '')}">`).join('')}
 <p><b>Only allow if you just added this connector yourself.</b> Anyone can send you this link; allowing it grants Brain access to whoever started it.</p>
@@ -92,10 +91,10 @@ export function createMcp({ vault, state, secret, isOwner }) {
   return async function handle(req, res) {
     const url = new URL(req.url ?? '/', 'http://x');
     const route = `${req.method} ${url.pathname}`;
+    const o = `https://${req.headers.host}`;
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource')) {
-      json(res, 200, { resource: origin(req) + '/mcp', authorization_servers: [origin(req)], bearer_methods_supported: ['header'] });
+      json(res, 200, { resource: o + '/mcp', authorization_servers: [o], bearer_methods_supported: ['header'] });
     } else if (url.pathname.startsWith('/.well-known/oauth-authorization-server')) {
-      const o = origin(req);
       json(res, 200, { issuer: o, authorization_endpoint: o + '/oauth/authorize', token_endpoint: o + '/oauth/token',
         registration_endpoint: o + '/oauth/register', response_types_supported: ['code'],
         grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'],
@@ -113,7 +112,7 @@ export function createMcp({ vault, state, secret, isOwner }) {
       }
       // Approval needs the owner's setup session. The cookie is SameSite=Lax, so a
       // cross-site POST arrives without it; the Origin check covers old browsers.
-      const sameSite = !req.headers.origin || req.headers.origin === origin(req);
+      const sameSite = !req.headers.origin || req.headers.origin === o;
       if (!isOwner(req) || (req.method === 'POST' && !sameSite)) {
         return send(401, page('Brain connector', '<p>Log in at <a href="/snapclaw">/snapclaw</a> in this browser, then reload this page.</p>')), true;
       }
@@ -137,16 +136,15 @@ export function createMcp({ vault, state, secret, isOwner }) {
     } else if (url.pathname === '/mcp') {
       const token = (req.headers.authorization ?? '').match(/^Bearer (\S+)$/)?.[1];
       if (!verify(token, 'access')) {
-        return json(res, 401, { error: 'invalid_token' }, { 'www-authenticate': `Bearer resource_metadata="${origin(req)}/.well-known/oauth-protected-resource"` }), true;
+        return json(res, 401, { error: 'invalid_token' }, { 'www-authenticate': `Bearer resource_metadata="${o}/.well-known/oauth-protected-resource"` }), true;
       }
       // Stateless server: no SSE stream, no session to delete.
       if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { allow: 'POST' }), true;
       let msg;
       try { msg = JSON.parse(await body(req)); } catch { return json(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }), true; }
-      const batch = Array.isArray(msg) ? msg : [msg];
-      const replies = batch.filter(m => m && m.id !== undefined && m.method).map(rpc);
-      if (!replies.length) { res.writeHead(202); res.end(); return true; }
-      json(res, 200, Array.isArray(msg) ? replies : replies[0]);
+      // Notifications (no id) get 202. No batches: MCP 2025-06-18 dropped them.
+      if (msg?.id === undefined) { res.writeHead(202); res.end(); return true; }
+      json(res, 200, rpc(msg));
     } else return false;
     return true;
   };
