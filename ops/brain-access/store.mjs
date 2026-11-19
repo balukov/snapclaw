@@ -30,9 +30,9 @@ function atomic(file, text) {
   finally { fs.rmSync(temporary, { force: true }); }
 }
 
-export function createStore(vault, state) {
+export function createStore(vault, state, agent = 'snapclaw') {
   fs.mkdirSync(state, { recursive: true, mode: 0o700 });
-  const records = safe(vault, 'raw/snapclaw');
+  const records = safe(vault, 'raw/' + agent);
   fs.mkdirSync(records, { recursive: true });
   return {
     wiki(page = 'index.md') {
@@ -53,7 +53,7 @@ export function createStore(vault, state) {
       }
       if (!goal) throw Error('Start a goal first');
       const slug = goal.title.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-|-$/g, '').slice(0, 50) || 'session';
-      const relative = `raw/snapclaw/${goal.date}-${slug}-${goal.id}.md`;
+      const relative = `raw/${agent}/${goal.date}-${slug}-${goal.id}.md`;
       const file = safe(vault, relative);
       let text = fs.existsSync(file) ? read(file) : '';
       if (args.action === 'save') {
@@ -66,7 +66,7 @@ export function createStore(vault, state) {
           goal = { ...goal, status: args.status };
           atomic(mapping, JSON.stringify(goal));
         }
-        const front = { date: goal.date, updated: new Date().toISOString(), agent: 'snapclaw', session: goal.id, title: goal.title, status: goal.status || 'active' };
+        const front = { date: goal.date, updated: new Date().toISOString(), agent, session: goal.id, title: goal.title, status: goal.status || 'active' };
         text = '---\n' + Object.entries(front).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('\n') + `\n---\n\n${body}\n`;
         atomic(file, text);
       } else if (!['start', 'read'].includes(args.action)) throw Error('Unknown session action');

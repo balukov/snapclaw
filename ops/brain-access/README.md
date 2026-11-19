@@ -28,6 +28,28 @@ workspace. Only the nightly `Brain dreaming` automation should target it. The da
 agent cannot spawn it or change the automation. DREAMS.md is written only by
 the dreaming role, one diary entry per productive night (since 2026-10-18).
 
+## Claude connector (`/mcp`)
+
+`mcp.mjs` serves Brain to Claude (claude.ai, Claude Duet) as a remote MCP
+connector at `https://<domain>/mcp` (Streamable HTTP, JSON responses, no
+sessions). Two tools, so the connector settings can permission them apart:
+`brain_wiki` (read-only, `wiki/` only) and `brain_session` (writes only the
+store-chosen note in `raw/claude-duet/`, revision-checked, save-session shape).
+Both go through `store.mjs`, never through an agent or shell.
+
+OAuth 2.1 with PKCE and dynamic registration; only the claude.ai/claude.com
+callbacks are accepted. `/oauth/authorize` requires the owner's `/snapclaw`
+session cookie (log in first), shows an Allow button, and refuses cross-site
+POSTs; no password is typed there, so a phishing link cannot harvest it and
+there is no lockout to trip. Approve only a flow you started yourself: the code
+goes to whichever claude.ai account began it. The connector only ever holds tokens. Tokens are stateless HMACs over the session secret plus
+SETUP_PASSWORD: access 1h, refresh 30d; rotating the password revokes all.
+Claude has one current goal (fixed host key `claude-duet`), mapped in
+`/data/.openclaw/brain-sessions-claude-duet`.
+
+To add: claude.ai → Settings → Connectors → Add custom connector → the `/mcp`
+URL, no client ID. Checks: `node --test test/brain-mcp.test.mjs`.
+
 ## Install and activate
 
 1. Deploy the image containing this directory, the SSH package, and entrypoint
