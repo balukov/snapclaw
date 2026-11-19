@@ -38,9 +38,11 @@ store-chosen note in `raw/claude-duet/`, revision-checked, save-session shape).
 Both go through `store.mjs`, never through an agent or shell.
 
 OAuth 2.1 with PKCE and dynamic registration; only the claude.ai/claude.com
-callbacks are accepted. The owner approves on `/oauth/authorize` by entering
-SETUP_PASSWORD (same per-IP lockout as the login form); the connector only ever
-holds tokens. Tokens are stateless HMACs over the session secret plus
+callbacks are accepted. `/oauth/authorize` requires the owner's `/snapclaw`
+session cookie (log in first), shows an Allow button, and refuses cross-site
+POSTs; no password is typed there, so a phishing link cannot harvest it and
+there is no lockout to trip. Approve only a flow you started yourself: the code
+goes to whichever claude.ai account began it. The connector only ever holds tokens. Tokens are stateless HMACs over the session secret plus
 SETUP_PASSWORD: access 1h, refresh 30d; rotating the password revokes all.
 Claude has one current goal (fixed host key `claude-duet`), mapped in
 `/data/.openclaw/brain-sessions-claude-duet`.

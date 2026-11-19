@@ -18,12 +18,12 @@ test('MCP connector: OAuth with PKCE, wiki-only reads, raw/claude-duet-only writ
   fs.writeFileSync(path.join(vault, 'wiki/Page.md'), 'Page');
   fs.writeFileSync(path.join(vault, 'secret.md'), 'PRIVATE');
   const handle = createMcp({ vault, state: path.join(dir, 'state'), secret: 's3cret',
-    verifyPassword: (_req, p) => p === 'pw' });
+    isOwner: req => req.headers.cookie === 'owner' });
   const server = http.createServer(async (req, res) => { if (!(await handle(req, res))) { res.writeHead(404); res.end(); } });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   t.after(() => { server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const form = body => ({ method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) });
+  const form = body => ({ method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'owner' }, body: new URLSearchParams(body) });
 
   // Discovery and challenge.
   const unauth = await fetch(base + '/mcp', { method: 'POST', body: '{}' });
@@ -39,10 +39,12 @@ test('MCP connector: OAuth with PKCE, wiki-only reads, raw/claude-duet-only writ
   const verifier = 'v'.repeat(50);
   const challenge = b64url(createHash('sha256').update(verifier).digest());
   const params = { client_id: reg.client_id, redirect_uri: REDIRECT, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state: 'xyz' };
-  assert.equal((await fetch(base + '/oauth/authorize?' + new URLSearchParams(params))).status, 200);
-  assert.equal((await fetch(base + '/oauth/authorize', form({ ...params, password: 'wrong' }))).status, 401);
-  assert.equal((await fetch(base + '/oauth/authorize', form({ ...params, redirect_uri: 'https://evil.example/cb', password: 'pw' }))).status, 400);
-  const ok = await fetch(base + '/oauth/authorize', form({ ...params, password: 'pw' }));
+  assert.equal((await fetch(base + '/oauth/authorize?' + new URLSearchParams(params))).status, 401, 'no owner session');
+  assert.equal((await fetch(base + '/oauth/authorize?' + new URLSearchParams(params), { headers: { cookie: 'owner' } })).status, 200);
+  const csrf = form(params); csrf.headers.origin = 'https://evil.example';
+  assert.equal((await fetch(base + '/oauth/authorize', csrf)).status, 401, 'cross-site approve refused');
+  assert.equal((await fetch(base + '/oauth/authorize', form({ ...params, redirect_uri: 'https://evil.example/cb' }))).status, 400);
+  const ok = await fetch(base + '/oauth/authorize', form(params));
   assert.equal(ok.status, 302);
   const back = new URL(ok.headers.get('location'));
   assert.equal(back.origin + back.pathname, REDIRECT);

@@ -756,8 +756,13 @@ const handleMcp: (
   vault: WORKSPACE_DIR,
   state: path.join(STATE_DIR, "brain-sessions-claude-duet"),
   secret: SESSION_SECRET + SETUP_PASSWORD,
-  verifyPassword: (req: http.IncomingMessage, password: string) =>
-    verifyPassword(clientIp(req), password),
+  // Cookie only: Basic auth would turn the approve page back into a password
+  // form that phishing could harvest a grant through.
+  isOwner: (req: http.IncomingMessage) =>
+    safeEqual(
+      /snapclaw_session=([a-f0-9]+)/.exec(req.headers.cookie ?? "")?.[1] ?? "",
+      makeSessionToken(),
+    ),
 });
 
 // --- Request dispatch ---

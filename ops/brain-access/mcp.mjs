@@ -1,8 +1,8 @@
 // Remote MCP endpoint for the Claude connector (claude.ai, Claude Duet).
 // Same boundary as the OpenClaw plugin: reads only wiki/, writes only the
 // store-chosen note in raw/claude-duet/. Access is OAuth 2.1 (PKCE, dynamic
-// registration) where the owner approves by entering SETUP_PASSWORD on the
-// authorize page; the password never reaches the connector. Tokens are
+// registration); the owner approves on the authorize page from a logged-in
+// /snapclaw session, so no password is typed there. Tokens are
 // stateless HMAC blobs keyed on the server secret, so rotating
 // SETUP_PASSWORD or the session secret revokes every grant.
 import { createHmac, createHash, timingSafeEqual } from 'node:crypto';
@@ -39,17 +39,7 @@ async function body(req) {
 }
 const json = (res, status, value, headers = {}) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers }); res.end(JSON.stringify(value)); };
 
-export function createMcp({ vault, state, secret, verifyPassword }) {
-  // The per-IP lockout keys on X-Forwarded-For, which a client can rotate, so
-  // also cap failures globally: 20 per 15 minutes locks the page for everyone.
-  let fails = [];
-  const approve = (req, password) => {
-    fails = fails.filter(t => t > Date.now() - 15 * 60_000);
-    if (fails.length >= 20) return false;
-    if (verifyPassword(req, password)) return true;
-    fails.push(Date.now());
-    return false;
-  };
+export function createMcp({ vault, state, secret, isOwner }) {
   // Lazy: the vault may not exist yet when the server boots.
   let store;
   const sign = data => createHmac('sha256', secret).update('brain-mcp:' + data).digest('base64url');
@@ -72,7 +62,8 @@ export function createMcp({ vault, state, secret, verifyPassword }) {
 <p>Claude will read <code>wiki/</code> and write session notes to <code>raw/${AGENT}/</code>.</p>${error ? `<p style="color:#b00">${esc(error)}</p>` : ''}
 <form method="post" action="/oauth/authorize">${['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'response_type']
     .map(k => `<input type="hidden" name="${k}" value="${esc(q.get(k) ?? '')}">`).join('')}
-<label>SnapClaw password <input type="password" name="password" autofocus required></label> <button>Allow</button></form>`);
+<p><b>Only allow if you just added this connector yourself.</b> Anyone can send you this link; allowing it grants Brain access to whoever started it.</p>
+<button>Allow</button></form>`);
 
   function callTool(name, args = {}) {
     const tool = TOOLS.find(t => t.name === name);
@@ -120,8 +111,13 @@ export function createMcp({ vault, state, secret, verifyPassword }) {
       if (!REDIRECTS.includes(q.get('redirect_uri')) || q.get('response_type') !== 'code' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge')) {
         return send(400, page('Brain connector', '<p>Invalid authorization request.</p>')), true;
       }
+      // Approval needs the owner's setup session. The cookie is SameSite=Lax, so a
+      // cross-site POST arrives without it; the Origin check covers old browsers.
+      const sameSite = !req.headers.origin || req.headers.origin === origin(req);
+      if (!isOwner(req) || (req.method === 'POST' && !sameSite)) {
+        return send(401, page('Brain connector', '<p>Log in at <a href="/snapclaw">/snapclaw</a> in this browser, then reload this page.</p>')), true;
+      }
       if (req.method === 'GET') return send(200, authorizeForm(q)), true;
-      if (!approve(req, q.get('password') ?? '')) return send(401, authorizeForm(q, 'Wrong password, or too many attempts.')), true;
       const back = new URL(q.get('redirect_uri'));
       back.searchParams.set('code', issue('code', { challenge: q.get('code_challenge'), redirect_uri: q.get('redirect_uri') }));
       if (q.get('state')) back.searchParams.set('state', q.get('state'));
