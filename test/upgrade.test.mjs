@@ -95,7 +95,14 @@ test("snapshotState: copies gateway state but not the vault, browser or older sn
     assert.equal(snapshotState(dir, "OpenClaw 2026.5.27", "OpenClaw 2026.9.2"), snap, "a retried migration keeps the first snapshot");
     assert.equal(fs.readFileSync(path.join(snap, "openclaw.json"), "utf8"), '{"v":5}');
 
-    snapshotState(dir, "OpenClaw 2026.9.2", "OpenClaw 2026.10.1");
+    const cut = path.join(dir, "backups", ".partial-pre-migration-2026-01-01T00-00-00-000Z-2026.9.2-to-2026.10.1");
+    fs.mkdirSync(cut);
+    fs.writeFileSync(path.join(cut, "openclaw.json"), "{");
+    const fresh = snapshotState(dir, "OpenClaw 2026.9.2", "OpenClaw 2026.10.1");
+    assert.notEqual(path.basename(fresh), path.basename(cut), "a copy cut short is not reused");
+    assert.equal(fs.readFileSync(path.join(fresh, "openclaw.json"), "utf8"), '{"v":"half-migrated"}');
+    assert.equal(fs.existsSync(cut), false, "leftover partial copies are cleared");
+
     snapshotState(dir, "OpenClaw 2026.10.1", "OpenClaw 2026.11.1");
     const kept = fs.readdirSync(path.join(dir, "backups")).sort();
     assert.equal(kept.length, 2);

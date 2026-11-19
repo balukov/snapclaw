@@ -58,6 +58,7 @@ export function migrationAction(marker: string | null, current: string): Migrati
 
 export const SNAPSHOT_DIR = "backups";
 export const SNAPSHOT_PREFIX = "pre-migration-";
+const PARTIAL_PREFIX = ".partial-";
 // Skipped: the vault (Obsidian Sync carries it), regenerable caches, older
 // snapshots, and SnapClaw's own state that OpenClaw never migrates. Restoring
 // that last group would revoke connector grants or rewind Brain session notes.
@@ -100,12 +101,20 @@ export function snapshotState(
     const earlier = fs.readdirSync(root).find((f) => f.startsWith(SNAPSHOT_PREFIX) && f.endsWith(suffix));
     if (earlier) return path.join(root, earlier);
   } catch {}
-  const dest = path.join(root, SNAPSHOT_PREFIX + nextStamp(root) + suffix);
+  const name = SNAPSHOT_PREFIX + nextStamp(root) + suffix;
+  const dest = path.join(root, name);
+  // Copied under a partial name and renamed when complete, so a copy cut short
+  // by a container kill is never mistaken for a usable snapshot.
+  const partial = path.join(root, PARTIAL_PREFIX + name);
   try {
-    fs.mkdirSync(dest, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    for (const f of fs.readdirSync(root)) {
+      if (f.startsWith(PARTIAL_PREFIX)) fs.rmSync(path.join(root, f), { recursive: true, force: true });
+    }
+    fs.mkdirSync(partial, { mode: 0o700 });
     for (const entry of fs.readdirSync(stateDir)) {
       if (skipInSnapshot(entry)) continue;
-      fs.cpSync(path.join(stateDir, entry), path.join(dest, entry), {
+      fs.cpSync(path.join(stateDir, entry), path.join(partial, entry), {
         recursive: true,
         verbatimSymlinks: true,
         filter: (src) => {
@@ -114,9 +123,10 @@ export function snapshotState(
         },
       });
     }
+    fs.renameSync(partial, dest);
   } catch (err) {
     console.error(`[upgrade] state snapshot failed: ${(err as Error).message}`);
-    fs.rmSync(dest, { recursive: true, force: true });
+    fs.rmSync(partial, { recursive: true, force: true });
     return null;
   }
   const old = fs

@@ -141,6 +141,12 @@ const snapshots = () => {
   }
 };
 
+// docs/UPGRADE-RECOVERY.md, "Rolling back after a migration", step 2.
+function restore(name) {
+  fs.rmSync(path.join(STATE, "openclaw-version"), { force: true });
+  fs.cpSync(path.join(STATE, "backups", name), STATE, { recursive: true, force: true, verbatimSymlinks: true });
+}
+
 const healthGateway = async () => (await (await fetch(server.base + "/healthz")).json()).gateway;
 
 let cookie;
@@ -290,8 +296,7 @@ test("rollback to the older image without restoring: gateway refuses, no downgra
 });
 
 test("rollback with the snapshot restored: the older gateway starts on its own state; Brain notes and grants are untouched", async () => {
-  const snap = path.join(STATE, "backups", snapshots()[0]);
-  fs.cpSync(snap, STATE, { recursive: true, force: true, verbatimSymlinks: true });
+  restore(snapshots().find((f) => f.includes("2026.5.27-to-")));
   await boot(OLD);
   assert.equal(calls(`${OLD} doctor`).length, 0);
   assert.equal(marker(), OLD);
@@ -302,5 +307,26 @@ test("rollback with the snapshot restored: the older gateway starts on its own s
   assert.equal(s.obsidianSync, "running");
   const note = await brainUp("After upgrade");
   assert.match(note.text, /Saved on the new version/, "the restore did not rewind the current Brain goal");
+  assert.equal(await shutdown(), 0);
+});
+
+test("rollback of a volume that had no version marker: the restore clears the newer marker, the older gateway starts", async () => {
+  fs.rmSync(path.join(STATE, "openclaw-version"));
+  await boot(NEW);
+  const snap = snapshots().find((f) => f.includes("unknown-to-"));
+  assert.ok(snap, "snapshot taken from a marker-less volume");
+  assert.equal(fs.existsSync(path.join(STATE, "backups", snap, "openclaw-version")), false);
+  assert.equal(marker(), NEW);
+  assert.equal(await shutdown(), 0);
+
+  await boot(OLD, { expectGateway: "failed" });
+  assert.ok(server.log().includes("REFUSING TO START"));
+  assert.equal(await shutdown(), 0);
+
+  restore(snap);
+  await boot(OLD);
+  assert.equal(marker(), OLD, "the older doctor ran once on the restored state and recorded its version");
+  assert.equal((await status()).gatewayRunning, true);
+  await brainUp("After upgrade");
   assert.equal(await shutdown(), 0);
 });

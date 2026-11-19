@@ -74,17 +74,27 @@ notes. One copy per version pair; the newest two are kept.
 ## Rolling back after a migration
 
 OpenClaw does not read state migrated by a newer version. SnapClaw refuses to
-start an older gateway on it and never runs the older `doctor` over it.
+start an older gateway on it and never runs the older `doctor` over it. That
+guard lives in SnapClaw itself, so a commit from before it (before DEV-168)
+would run the older `doctor` over migrated state the moment it boots. Never roll
+back by redeploying an old commit.
 
-1. Redeploy the previous commit (older `OPENCLAW_VERSION`). Expect
-   `REFUSING TO START`; Brain and Sync stay up.
-2. In the panel Terminal:
+1. On top of the current `main`, commit only the `OPENCLAW_VERSION` change back
+   to the older version, and deploy that. Expect `REFUSING TO START`; Brain and
+   Sync stay up.
+2. In the panel Terminal, remove the newer version marker and copy the snapshot
+   back. The marker goes first because a snapshot taken on a volume that had no
+   marker yet has none to copy over it:
    ```
    ls /data/.openclaw/backups/
+   rm -f /data/.openclaw/openclaw-version
    cp -a /data/.openclaw/backups/pre-migration-<time>-<old>-to-<new>/. /data/.openclaw/
    ```
-3. Panel → **Restart gateway**, then run the readiness checks.
+3. Panel → **Restart gateway**, then run the readiness checks. If the snapshot
+   had no marker, the older `doctor` runs once on the restored state, as it
+   did before the upgrade.
 
+Snapshots exist only for migrations run by a SnapClaw that has this guard.
 Anything OpenClaw recorded after the upgrade (chats, pairings, auth changes) is
 lost. With no snapshot, the way back is forward: redeploy the newer version.
 To start the older gateway on migrated state anyway, at your own risk, write the
