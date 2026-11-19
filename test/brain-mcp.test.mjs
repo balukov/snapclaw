@@ -43,6 +43,14 @@ test('MCP connector: OAuth with PKCE, wiki-only reads, raw/claude-duet-only writ
   assert.equal((await fetch(base + '/oauth/authorize?' + new URLSearchParams(params), { headers: { cookie: 'owner' } })).status, 200);
   const csrf = form(params); csrf.headers.origin = 'https://evil.example';
   assert.equal((await fetch(base + '/oauth/authorize', csrf)).status, 401, 'cross-site approve refused');
+  const crossFetch = form(params); crossFetch.headers['sec-fetch-site'] = 'cross-site';
+  assert.equal((await fetch(base + '/oauth/authorize', crossFetch)).status, 401, 'Sec-Fetch-Site cross-site refused');
+  const nullOrigin = form(params); nullOrigin.headers.origin = 'null';
+  assert.equal((await fetch(base + '/oauth/authorize', nullOrigin)).status, 401, 'null Origin without Sec-Fetch-Site refused');
+  const chrome = form(params); Object.assign(chrome.headers, { origin: 'null', 'sec-fetch-site': 'same-origin' });
+  const chromeOk = await fetch(base + '/oauth/authorize', chrome);
+  assert.equal(chromeOk.status, 302, 'Chrome under no-referrer: Origin null, Sec-Fetch-Site same-origin');
+  assert.equal((await fetch(base + '/oauth/authorize?' + new URLSearchParams(params), { headers: { cookie: 'owner' } })).headers.get('referrer-policy'), 'same-origin');
   assert.equal((await fetch(base + '/oauth/authorize', form({ ...params, redirect_uri: 'https://evil.example/cb' }))).status, 400);
   const ok = await fetch(base + '/oauth/authorize', form(params));
   assert.equal(ok.status, 302);

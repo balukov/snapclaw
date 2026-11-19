@@ -106,13 +106,17 @@ export function createMcp({ vault, state, secret, isOwner }) {
       json(res, 201, { client_id: CLIENT_ID, redirect_uris: uris, token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'] });
     } else if (url.pathname === '/oauth/authorize' && (req.method === 'GET' || req.method === 'POST')) {
       const q = req.method === 'POST' ? new URLSearchParams(await body(req)) : url.searchParams;
-      const send = (status, html) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(html); };
+      // same-origin overrides the global no-referrer: under no-referrer Chrome sends
+      // `Origin: null` on the Allow POST, which the check below would refuse.
+      const send = (status, html) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'same-origin' }); res.end(html); };
       if (!REDIRECTS.includes(q.get('redirect_uri')) || q.get('response_type') !== 'code' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge')) {
         return send(400, page('Brain connector', '<p>Invalid authorization request.</p>')), true;
       }
       // Approval needs the owner's setup session. The cookie is SameSite=Lax, so a
-      // cross-site POST arrives without it; the Origin check covers old browsers.
-      const sameSite = !req.headers.origin || req.headers.origin === o;
+      // cross-site POST arrives without it. Browsers that send Sec-Fetch-Site are
+      // judged by it (it stays honest when Origin is `null`); older ones by Origin.
+      const fetchSite = req.headers['sec-fetch-site'];
+      const sameSite = fetchSite ? fetchSite === 'same-origin' : (!req.headers.origin || req.headers.origin === o);
       if (!isOwner(req) || (req.method === 'POST' && !sameSite)) {
         return send(401, page('Brain connector', '<p>Log in at <a href="/snapclaw">/snapclaw</a> in this browser, then reload this page.</p>')), true;
       }
