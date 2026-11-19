@@ -1,10 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   parseJsonTail,
   needsMigration,
   countAuthProfiles,
   dashboardFragment,
+  migrationAction,
+  openclawVersion,
+  snapshotState,
 } from "../dist/upgrade.js";
 
 const WARNING =
@@ -41,4 +47,61 @@ test("dashboardFragment: returns the bootstrap fragment only when the token is p
   assert.equal(dashboardFragment(ok), "#bootstrapToken=3D0l08uTl6G9nM4z&bootstrapProfile=owner");
   assert.equal(dashboardFragment(JSON.stringify({ ok: true, browserUrl: "http://127.0.0.1:18789/" })), null);
   assert.equal(dashboardFragment("Gateway not reachable"), null);
+});
+
+test("migrationAction: forward or unknown versions migrate, an older OpenClaw is a downgrade", () => {
+  assert.deepEqual(openclawVersion("OpenClaw 2026.9.2 (3928bad)"), [2026, 9, 2]);
+  assert.equal(openclawVersion("garbage"), null);
+  assert.equal(migrationAction("OpenClaw 2026.9.2 (3928bad)", "OpenClaw 2026.9.2 (3928bad)"), "none");
+  assert.equal(migrationAction(null, ""), "none");
+  assert.equal(migrationAction(null, "OpenClaw 2026.9.2 (3928bad)"), "migrate");
+  assert.equal(migrationAction("OpenClaw 2026.5.27", "OpenClaw 2026.9.2 (3928bad)"), "migrate");
+  assert.equal(migrationAction("OpenClaw 2026.9.2 (3928bad)", "OpenClaw 2026.10.1 (aaaaaaa)"), "migrate");
+  assert.equal(migrationAction("OpenClaw 2026.9.2 (3928bad)", "OpenClaw 2026.9.2 (1111111)"), "migrate");
+  assert.equal(migrationAction("something odd", "OpenClaw 2026.9.2"), "migrate");
+  assert.equal(migrationAction("OpenClaw 2026.9.2 (3928bad)", "OpenClaw 2026.5.27"), "downgrade");
+  assert.equal(migrationAction("OpenClaw 2026.10.1", "OpenClaw 2026.9.2"), "downgrade");
+});
+
+test("snapshotState: copies gateway state but not the vault, browser or older snapshots; one per version pair; keeps two", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snapclaw-snapshot-"));
+  try {
+    fs.mkdirSync(path.join(dir, "state"), { recursive: true });
+    fs.mkdirSync(path.join(dir, "workspace/wiki"), { recursive: true });
+    fs.mkdirSync(path.join(dir, "browser/openclaw"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "openclaw.json"), '{"v":5}');
+    fs.writeFileSync(path.join(dir, "openclaw-version"), "OpenClaw 2026.5.27");
+    fs.writeFileSync(path.join(dir, "state/openclaw.sqlite"), "db");
+    fs.writeFileSync(path.join(dir, "workspace/wiki/index.md"), "vault");
+    fs.symlinkSync(path.join(dir, "workspace"), path.join(dir, "workspace-link"));
+    fs.mkdirSync(path.join(dir, "brain-sessions-claude-duet"));
+    fs.writeFileSync(path.join(dir, "brain-access-enabled"), "");
+    fs.writeFileSync(path.join(dir, "session.secret"), "s");
+
+    const snap = snapshotState(dir, "OpenClaw 2026.5.27", "OpenClaw 2026.9.2 (3928bad)");
+    assert.match(path.basename(snap), /^pre-migration-.+-2026\.5\.27-to-2026\.9\.2$/);
+    assert.equal(fs.readFileSync(path.join(snap, "openclaw.json"), "utf8"), '{"v":5}');
+    assert.equal(fs.readFileSync(path.join(snap, "openclaw-version"), "utf8"), "OpenClaw 2026.5.27");
+    assert.equal(fs.readFileSync(path.join(snap, "state/openclaw.sqlite"), "utf8"), "db");
+    assert.equal(fs.existsSync(path.join(snap, "workspace")), false);
+    assert.equal(fs.existsSync(path.join(snap, "browser")), false);
+    assert.equal(fs.existsSync(path.join(snap, "backups")), false);
+    for (const own of ["brain-sessions-claude-duet", "brain-access-enabled", "session.secret"]) {
+      assert.equal(fs.existsSync(path.join(snap, own)), false, `${own} is SnapClaw state, never restored`);
+    }
+    assert.equal(fs.lstatSync(path.join(snap, "workspace-link")).isSymbolicLink(), true, "links are copied, not followed");
+
+    fs.writeFileSync(path.join(dir, "openclaw.json"), '{"v":"half-migrated"}');
+    assert.equal(snapshotState(dir, "OpenClaw 2026.5.27", "OpenClaw 2026.9.2"), snap, "a retried migration keeps the first snapshot");
+    assert.equal(fs.readFileSync(path.join(snap, "openclaw.json"), "utf8"), '{"v":5}');
+
+    snapshotState(dir, "OpenClaw 2026.9.2", "OpenClaw 2026.10.1");
+    snapshotState(dir, "OpenClaw 2026.10.1", "OpenClaw 2026.11.1");
+    const kept = fs.readdirSync(path.join(dir, "backups")).sort();
+    assert.equal(kept.length, 2);
+    assert.match(kept[0], /2026\.9\.2-to-2026\.10\.1$/);
+    assert.match(kept[1], /2026\.10\.1-to-2026\.11\.1$/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

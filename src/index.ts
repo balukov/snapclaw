@@ -24,7 +24,7 @@ import * as gateway from "./gateway.js";
 import * as sync from "./sync.js";
 import { ensurePersistentLinks, runCmd, redactSecrets, sleep } from "./utils.js";
 import { countAuthProfiles, dashboardFragment } from "./upgrade.js";
-import { telegramPairingCount } from "./pairing.js";
+import { channelsReadyOnVolume, markChannelsReadyOnVolume } from "./pairing.js";
 
 // --- Auth ---
 
@@ -248,28 +248,15 @@ let authCache: { value: boolean; until: number } | null = null;
 let authProbe: Promise<boolean> | null = null;
 
 const CHANNEL_RE = /telegram|discord|whatsapp/i;
-const CHANNELS_READY_FLAG = path.join(STATE_DIR, ".channels-ready");
 
 function markChannelsReady(): void {
   channelsReady = true;
-  try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-    fs.writeFileSync(CHANNELS_READY_FLAG, "1");
-  } catch {}
+  markChannelsReadyOnVolume(STATE_DIR);
 }
 
 async function checkChannelsReady(): Promise<boolean> {
   const hasBotToken = !!readConfig()?.channels?.telegram?.botToken;
-  if (!hasBotToken) {
-    try { fs.unlinkSync(CHANNELS_READY_FLAG); } catch {}
-    channelsReady = false;
-    return false;
-  }
-  if (fs.existsSync(CHANNELS_READY_FLAG)) {
-    channelsReady = true;
-    return true;
-  }
-  if (telegramPairingCount(path.join(STATE_DIR, "state", "openclaw.sqlite")) > 0) markChannelsReady();
+  channelsReady = channelsReadyOnVolume(STATE_DIR, hasBotToken) || (hasBotToken && channelsReady);
   return channelsReady;
 }
 
@@ -673,7 +660,11 @@ const handleConsoleRun: Handler = async (req, res) => {
   if (body.cmd !== "gateway.restart") {
     return sendJson(res, { ok: false, error: "Unknown command" }, 400);
   }
-  await restartGateway();
+  try {
+    await restartGateway();
+  } catch (err) {
+    return sendJson(res, { ok: false, error: (err as Error).message }, 500);
+  }
   sendJson(res, { ok: true, output: "Gateway restarted." });
 };
 

@@ -109,3 +109,44 @@ test('MCP connector: OAuth with PKCE, wiki-only reads, raw/claude-duet-only writ
   assert.equal(fs.readFileSync(path.join(vault, 'secret.md'), 'utf8'), 'PRIVATE');
   assert.equal((await rpc('nope')).error.code, -32601);
 });
+
+test('MCP connector: grants and the current goal survive a restart; a rotated secret revokes them', async t => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'brain-mcp-restart-')));
+  const vault = path.join(dir, 'vault'), state = path.join(dir, 'state');
+  fs.mkdirSync(path.join(vault, 'wiki'), { recursive: true });
+  fs.writeFileSync(path.join(vault, 'wiki/index.md'), 'Index');
+  const servers = [];
+  t.after(() => { for (const s of servers) s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const boot = async secret => {
+    const handle = createMcp({ vault, state, secret, isOwner: () => true });
+    const server = http.createServer(async (req, res) => { if (!(await handle(req, res))) { res.writeHead(404); res.end(); } });
+    await new Promise(r => server.listen(0, '127.0.0.1', r));
+    servers.push(server);
+    return `http://127.0.0.1:${server.address().port}`;
+  };
+  const post = (base, p, body, headers = {}) => fetch(base + p, { method: 'POST', redirect: 'manual', headers, body });
+  const call = (base, token, name, args) => post(base, '/mcp', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    { authorization: 'Bearer ' + token }).then(async r => ({ status: r.status, body: r.status === 200 ? await r.json() : null }));
+
+  const before = await boot('secret-a');
+  const verifier = 'w'.repeat(50);
+  const params = { redirect_uri: REDIRECT, response_type: 'code', code_challenge: b64url(createHash('sha256').update(verifier).digest()), code_challenge_method: 'S256' };
+  const code = new URL((await post(before, '/oauth/authorize', new URLSearchParams(params), { 'content-type': 'application/x-www-form-urlencoded', 'sec-fetch-site': 'same-origin' })).headers.get('location')).searchParams.get('code');
+  const tokens = await (await post(before, '/oauth/token', new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, code_verifier: verifier }))).json();
+  const started = JSON.parse((await call(before, tokens.access_token, 'brain_session', { action: 'start', title: 'Restart goal' })).body.result.content[0].text);
+  await call(before, tokens.access_token, 'brain_session', { action: 'save', revision: started.revision, body: 'Before restart' });
+
+  const after = await boot('secret-a');
+  const read = await call(after, tokens.access_token, 'brain_session', { action: 'read' });
+  assert.equal(read.status, 200, 'access token issued before the restart still works');
+  const note = JSON.parse(read.body.result.content[0].text);
+  assert.equal(note.title, 'Restart goal');
+  assert.match(note.text, /Before restart/);
+  assert.equal(note.path, started.path, 'same note, not a new goal');
+  const refreshed = await post(after, '/oauth/token', new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token }));
+  assert.equal(refreshed.status, 200, 'refresh token issued before the restart still works');
+
+  const rotated = await boot('secret-b');
+  assert.equal((await call(rotated, tokens.access_token, 'brain_wiki', {})).status, 401, 'rotating SETUP_PASSWORD or session.secret revokes the grant');
+  assert.equal((await post(rotated, '/oauth/token', new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token }))).status, 400);
+});

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { telegramPairingCount } from "../dist/pairing.js";
+import { telegramPairingCount, channelsReadyOnVolume, markChannelsReadyOnVolume } from "../dist/pairing.js";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snapclaw-pairing-"));
 
@@ -31,4 +31,46 @@ test("telegramPairingCount: missing file or missing table is zero, not a throw",
   const p = path.join(dir, "empty.sqlite");
   new DatabaseSync(p).close();
   assert.equal(telegramPairingCount(p), 0);
+});
+
+function volume({ pairedInDb = false, flag = false } = {}) {
+  const v = fs.mkdtempSync(path.join(dir, "vol-"));
+  fs.mkdirSync(path.join(v, "state"));
+  const db = new DatabaseSync(path.join(v, "state", "openclaw.sqlite"));
+  db.exec("create table channel_pairing_allow_entries (channel_key text, account_id text, entry text, sort_order integer, updated_at integer)");
+  if (pairedInDb) db.exec("insert into channel_pairing_allow_entries values ('telegram', 'default', '42', 0, 0)");
+  db.close();
+  if (flag) markChannelsReadyOnVolume(v);
+  return v;
+}
+
+test("channelsReadyOnVolume: a pairing made before the flag existed is adopted and written to the flag", () => {
+  const v = volume({ pairedInDb: true });
+  assert.equal(fs.existsSync(path.join(v, ".channels-ready")), false);
+  assert.equal(channelsReadyOnVolume(v, true), true);
+  assert.equal(fs.existsSync(path.join(v, ".channels-ready")), true);
+});
+
+test("channelsReadyOnVolume: the flag survives an upgrade that renames or drops OpenClaw's pairing table", () => {
+  const v = volume({ pairedInDb: true });
+  assert.equal(channelsReadyOnVolume(v, true), true);
+  const db = new DatabaseSync(path.join(v, "state", "openclaw.sqlite"));
+  db.exec("alter table channel_pairing_allow_entries rename to pairing_allow_v2");
+  db.close();
+  assert.equal(telegramPairingCount(path.join(v, "state", "openclaw.sqlite")), 0);
+  assert.equal(channelsReadyOnVolume(v, true), true);
+  fs.rmSync(path.join(v, "state"), { recursive: true });
+  assert.equal(channelsReadyOnVolume(v, true), true, "flag alone is enough after a restart");
+});
+
+test("channelsReadyOnVolume: a pairing approved after the upgrade (flag only) counts; no pairing does not", () => {
+  assert.equal(channelsReadyOnVolume(volume({ flag: true }), true), true);
+  assert.equal(channelsReadyOnVolume(volume(), true), false);
+});
+
+test("channelsReadyOnVolume: removing the bot token clears the flag", () => {
+  const v = volume({ flag: true });
+  assert.equal(channelsReadyOnVolume(v, false), false);
+  assert.equal(fs.existsSync(path.join(v, ".channels-ready")), false);
+  assert.equal(channelsReadyOnVolume(v, true), false);
 });
