@@ -743,6 +743,23 @@ const setupRoutes: Record<string, Handler> = {
   "POST /snapclaw/api/pairing/approve": handlePairingApprove,
 };
 
+// --- Brain MCP connector (ops/brain-access/mcp.mjs) ---
+// Plain .mjs shared with the OpenClaw plugin, so it is loaded untyped. The
+// HMAC key includes SETUP_PASSWORD: rotating it revokes every connector grant.
+const { createMcp } = await import(
+  new URL("../ops/brain-access/mcp.mjs", import.meta.url).href
+);
+const handleMcp: (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+) => Promise<boolean> = createMcp({
+  vault: WORKSPACE_DIR,
+  state: path.join(STATE_DIR, "brain-sessions-claude-duet"),
+  secret: SESSION_SECRET + SETUP_PASSWORD,
+  verifyPassword: (req: http.IncomingMessage, password: string) =>
+    verifyPassword(clientIp(req), password),
+});
+
 // --- Request dispatch ---
 
 async function handleRequest(
@@ -755,6 +772,9 @@ async function handleRequest(
 
   const pub = publicRoutes[key];
   if (pub) return pub(req, res);
+
+  // OAuth + /mcp carry their own auth (bearer tokens), not the setup session.
+  if (await handleMcp(req, res)) return;
 
   // --- Setup routes (require auth) ---
   if (url.startsWith("/snapclaw")) {
