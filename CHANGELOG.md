@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **A rollback after an OpenClaw upgrade is possible again.** Before running `openclaw doctor --fix` for a new OpenClaw version, SnapClaw copies OpenClaw's state to `/data/.openclaw/backups/pre-migration-<time>-<old>-to-<new>/` (not the vault, browser profiles, SnapClaw's secrets or Brain session mappings; one per version pair, newest two kept). The panel backup export that 0.10.0 named as the only rollback was removed in 0.11.0, so until now nothing could be restored.
+- **An older OpenClaw no longer runs on a volume a newer one migrated.** Redeploying an older image used to run the older `doctor --fix` over migrated state and start the older gateway on it. The gateway now refuses to start and logs `REFUSING TO START` with the way back; the Brain connector and Obsidian Sync keep running. See `docs/UPGRADE-RECOVERY.md`.
+- **Upgrade and recovery runbook and tests (DEV-168).** `docs/UPGRADE-RECOVERY.md` lists readiness checks that go beyond a green CI or Railway health check, and how to recover. `test/recovery.test.mjs` boots the built server against stand-in `openclaw` and `ob` binaries and walks one volume through steady state, upgrade, restart, gateway and sync crashes, a refused rollback and a restored one, checking the gateway, pairing, Sync and the Brain connector at each step. Pairing readiness moved to `src/pairing.ts` so it is tested directly.
+- Panel **Restart gateway** reports a refused start instead of a bare 500.
+
 - **`web_search` works for the sandboxed daytime agent.** Its tool allowlist leaves it with the managed `web_search` tool, which had no provider (`web_search is disabled or no provider is available`). SnapClaw now defaults `tools.web.search.provider` to `codex` (Codex Hosted Search through the existing ChatGPT sign-in, no API key) and keeps any provider you set yourself.
 - **The Brain-access sshd is restarted when it dies.** `setup-ssh.sh` now runs it under a restart loop (`sshd -D -e`) instead of a one-shot daemon, so a dead sshd no longer leaves the daytime agent's `exec`/`read`/`write` with `Connection refused` on 127.0.0.1:2223 until the next redeploy; sshd's own log goes to the container log. `check-ssh.mjs` names a missing listener before trying SSH, and the entrypoint warns when the `brain-access-enabled` marker is gone but `openclaw.json` still sandboxes the main agent over SSH.
 

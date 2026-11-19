@@ -11,7 +11,7 @@ import {
   configPath,
 } from "./config.js";
 import { ensurePersistentLinks, runCmd, sleep, deepSet, redactSecrets } from "./utils.js";
-import { needsMigration } from "./upgrade.js";
+import { migrationAction, snapshotState, SNAPSHOT_DIR } from "./upgrade.js";
 
 let proc: ChildProcess | null = null;
 let starting: Promise<void> | null = null;
@@ -264,25 +264,45 @@ function clearStaleBrowserLocks(): void {
 
 const VERSION_MARKER = path.join(STATE_DIR, "openclaw-version");
 
-async function migrateState(): Promise<void> {
+// Returns false when the volume was migrated by a newer OpenClaw than the one
+// installed: running the older doctor over newer state, or starting an older
+// gateway on it, can damage it. The pre-migration snapshot is the way back
+// (docs/UPGRADE-RECOVERY.md). Brain (/mcp, Obsidian Sync) does not need the
+// gateway, so refusing here does not take Brain down.
+async function migrateState(): Promise<boolean> {
   const v = await runCmd("openclaw", ["--version"], 10_000);
   const current = v.code === 0 ? v.output.trim() : "";
   let marker: string | null = null;
   try {
     marker = fs.readFileSync(VERSION_MARKER, "utf8");
   } catch {}
-  if (!needsMigration(marker, current)) return;
+  const action = migrationAction(marker, current);
+  if (action === "none") return true;
+  if (action === "downgrade") {
+    console.error(
+      `[gateway] REFUSING TO START: the volume was migrated by ${marker?.trim()} but ${current} is installed. ` +
+        `Restore the pre-migration snapshot from ${STATE_DIR}/${SNAPSHOT_DIR} or redeploy the newer OpenClaw (docs/UPGRADE-RECOVERY.md).`,
+    );
+    return false;
+  }
 
+  const snapshot = snapshotState(STATE_DIR, marker, current);
+  console.log(
+    snapshot
+      ? `[gateway] pre-migration snapshot: ${snapshot}`
+      : "[gateway] WARNING: no pre-migration snapshot; rolling back after this migration will not be possible",
+  );
   console.log(`[gateway] ${current} — running state migration (doctor --fix)`);
   const r = await runCmd("openclaw", ["doctor", "--fix", "--non-interactive"], 300_000);
   if (r.code !== 0) {
     console.warn(`[gateway] doctor --fix exited ${r.code}:\n${redactSecrets(r.output)}`);
-    return;
+    return true;
   }
   try {
     fs.writeFileSync(VERSION_MARKER, current, "utf8");
   } catch {}
   console.log("[gateway] state migration complete");
+  return true;
 }
 
 // Single guarded entry point: concurrent callers (a proxied request via
@@ -307,7 +327,9 @@ async function startInternal(): Promise<void> {
   ensurePersistentLinks();
   clearStaleBrowserLocks();
 
-  await migrateState();
+  if (!(await migrateState())) {
+    throw new Error("OpenClaw is older than the version that migrated this volume");
+  }
 
   // Auto-fix config issues (e.g. plugin schema changes across openclaw versions)
   try {
